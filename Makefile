@@ -1,4 +1,4 @@
-.PHONY: install db migrate dev serving control traffic frontend lint typecheck seed-weights
+.PHONY: install db migrate dev serving control traffic frontend lint typecheck seed-weights seed-db seed
 
 install:
 	uv sync
@@ -12,6 +12,12 @@ migrate:
 
 seed-weights:
 	uv run python scripts/seed_weights.py
+
+seed-db:
+	uv run python scripts/seed_db.py
+
+# Full seed: CNN checkpoints, then the deploy + reference-profile rows.
+seed: seed-weights seed-db
 
 # Control plane API (:8000) + serving app (:8001). Run in two shells, or use `make control` / `make serving`.
 dev: control

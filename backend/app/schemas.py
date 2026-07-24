@@ -2,9 +2,10 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.app.domain.enums import (
+    INJECTABLE_FAULTS,
     FaultType,
     HypothesisKind,
     RemediationActionType,
@@ -37,6 +38,14 @@ class InjectionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     fault_type: FaultType
     params: dict[str, float] = Field(default_factory=dict)
+
+    @field_validator("fault_type")
+    @classmethod
+    def _must_be_injectable(cls, value: FaultType) -> FaultType:
+        # UNKNOWN is a diagnosis-taxonomy value, never an injectable fault. Reject at the boundary.
+        if value not in INJECTABLE_FAULTS:
+            raise ValueError(f"fault_type {value!r} is not injectable")
+        return value
 
 
 class InjectionOut(BaseModel):

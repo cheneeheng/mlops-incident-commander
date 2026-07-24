@@ -51,3 +51,34 @@ because the system measures drift/latency/distribution shifts, not classifier qu
 a manual follow-up.
 
 **Outcome:** Applied in ITER_01.
+
+### Entry 3
+
+**Type:** Decision
+**Mode:** Autonomous
+**Timestamp:** 2026-07-24
+**Task:** ITER_01 completion — serving logging granularity, injectable-fault validation, latency
+accounting, and bad_deploy revert target.
+
+**Context:** Four forks the plan/handoff left underspecified:
+1. Handoff item 5 says "/predict logs prediction_log + serving_log", but the observability invariant
+   forbids high-frequency (per-request) logging.
+2. `InjectionCreate.fault_type` is a `FaultType` enum, which includes `UNKNOWN` (a diagnosis-only
+   value, never injectable). Where to reject non-injectable faults.
+3. What `prediction_log.latency_ms` should represent when a latency injection is active.
+4. What `stop_injection` reverts a `bad_deploy` to ("good/prior" in the handoff).
+
+**Decision:**
+1. `/predict` writes `prediction_log` per request (its purpose); `serving_log` holds lifecycle
+   events only (startup model load, weight reloads). The serving app writes both tables over its
+   lifetime, not both per request. Honors the invariant; avoids duplicating prediction_log.
+2. Reject non-injectable faults at the schema boundary via a Pydantic `field_validator` on
+   `InjectionCreate` (→ 422). Routers stay thin; services trust validated input (no duplicate check).
+3. `latency_ms = inference_ms + state.added_latency_ms` — the latency the request actually incurred,
+   so the aggregator's p95 rises under a latency injection (the signal the detector needs).
+4. Revert to `v1.0-good` (the known-good version). Only good/bad exist, so "good" = "prior"; tracking
+   the pre-injection active version is unneeded state for the MVP.
+
+**Impact / Risk:** Low. All four are the conservative reading; none expand the schema or entities.
+
+**Outcome:** Applied in ITER_01.
