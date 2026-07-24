@@ -15,6 +15,10 @@ weights/
 .cache/
 *.pt
 
+# CIFAR-10 test set (~170MB), fetched on demand by the traffic generator via
+# torchvision CIFAR10(download=True). Regenerable, and over GitHub's 100MB file limit.
+data/
+
 # Node / frontend
 node_modules/
 frontend/dist/
