@@ -28,15 +28,15 @@ flowchart TB
     subgraph control[Control plane process :8000]
         routers[Routers] --> services[Services]
         services --> queries[db/queries.py]
-        agg[Metrics aggregator<br/>30s loop] --> graph
-        subgraph graph[LangGraph agent graph]
+        agg[Metrics aggregator<br/>30s loop] --> agent_graph
+        subgraph agent_graph[LangGraph agent graph]
             monitor[monitor<br/>cheap model] --> diagnosis[diagnosis<br/>strong model]
             diagnosis --> second[second_opinion]
             second --> adjud[adjudicator]
             diagnosis --> remed[remediation]
             adjud --> remed
         end
-        graph --> queries
+        agent_graph --> queries
         broker[[SSE broker<br/>in-process]]
     end
     subgraph serving_proc[Serving process :8001]
@@ -50,7 +50,7 @@ flowchart TB
     serving_app --> db
     traffic --> serving_app
     routers -.SSE.-> broker
-    graph -.publish.-> broker
+    agent_graph -.publish.-> broker
 ```
 
 ## Key flow — detect → diagnose → remediate → postmortem
@@ -81,7 +81,7 @@ sequenceDiagram
             GR->>MCP: independent second_opinion
             GR->>GR: adjudicator reconciles (agreement short-circuits the LLM)
         end
-        GR->>DB: decide_policy(fault, confidence) -> action, risk; insert remediation (PENDING)
+        GR->>DB: decide_policy(fault, confidence) -> action, risk. insert remediation (PENDING)
         alt risk LOW and confidence >= 0.85
             GR->>SV: auto-execute (rollback swaps active deploy)
             GR->>DB: remediation AUTO_EXECUTED, incident RESOLVED
