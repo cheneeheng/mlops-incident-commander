@@ -23,17 +23,25 @@ from backend.app.agents.llm import (
     get_client,
     truncate_tool_result,
 )
+from backend.app.agents.embeddings import embed
 from backend.app.agents.mcp_client import McpToolbox
-from backend.app.agents.prompts import DIAGNOSIS_SYSTEM, MONITOR_SYSTEM, REMEDIATION_SYSTEM
+from backend.app.agents.prompts import (
+    ADJUDICATOR_SYSTEM,
+    DIAGNOSIS_SYSTEM,
+    MONITOR_SYSTEM,
+    REMEDIATION_SYSTEM,
+)
 from backend.app.agents.telemetry import record_agent_run
 from backend.app.config import get_settings
 from backend.app.db.models import Hypothesis, Incident, MetricWindow, ReferenceProfile, Remediation
 from backend.app.db.queries import (
+    get_hypotheses_for_incident,
     get_reference_profile,
     get_window,
     insert_hypothesis,
     insert_incident,
     insert_remediation,
+    similar_postmortems,
 )
 from backend.app.db.session import SessionLocal
 from backend.app.domain.enums import (
@@ -86,6 +94,13 @@ class RemediationProposal(BaseModel):
     rationale: str
 
 
+class AdjudicatorOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    fault_type: FaultType
+    confidence: float = Field(ge=0.0, le=1.0)
+    reasoning: str
+
+
 def _window_summary(window: MetricWindow) -> dict[str, Any]:
     return {
         "window_start": window.window_start.isoformat(),
@@ -135,17 +150,18 @@ def _fail_closed(reason: str) -> DiagnosisOutput:
 
 
 async def _run_diagnosis(
-    toolbox: McpToolbox, summary: dict[str, Any]
+    toolbox: McpToolbox, summary: dict[str, Any], memory: str
 ) -> tuple[DiagnosisOutput, Usage]:
     usage = Usage()
     client = get_client()
     model = get_settings().model_strong
+    prefix = f"{memory}\n\n" if memory else ""
     messages: list[dict[str, Any]] = [
         {
             "role": "user",
             "content": (
-                "An incident was opened on this trigger window. Investigate the fault using the "
-                "tools (tool time ranges are ISO-8601 timestamps), then return the final JSON "
+                f"{prefix}An incident was opened on this trigger window. Investigate the fault using "
+                "the tools (tool time ranges are ISO-8601 timestamps), then return the final JSON "
                 f"hypothesis.\n\nTrigger window:\n{json.dumps(summary)}"
             ),
         }
@@ -187,6 +203,35 @@ async def _run_diagnosis(
             return _fail_closed("tool-call cap reached before a conclusion"), usage
 
 
+# ---- adjudication ------------------------------------------------------------------------------
+async def _run_adjudicator(
+    primary: Hypothesis, second: Hypothesis
+) -> tuple[AdjudicatorOutput, Usage, float]:
+    usage = Usage()
+    started = time.perf_counter()
+    payload = {
+        "primary": {
+            "fault_type": primary.fault_type,
+            "confidence": primary.confidence,
+            "evidence": primary.evidence,
+        },
+        "second_opinion": {
+            "fault_type": second.fault_type,
+            "confidence": second.confidence,
+            "evidence": second.evidence,
+        },
+    }
+    response = await get_client().messages.create(
+        model=get_settings().model_strong,
+        max_tokens=_MONITOR_MAX_TOKENS,
+        system=ADJUDICATOR_SYSTEM,
+        messages=[{"role": "user", "content": json.dumps(payload)}],
+    )
+    usage.add(response.usage)
+    output = AdjudicatorOutput.model_validate(extract_json(final_text(response)))
+    return output, usage, (time.perf_counter() - started) * 1000.0
+
+
 # ---- remediation -------------------------------------------------------------------------------
 async def _run_remediation(
     fault_type: FaultType, confidence: float
@@ -214,9 +259,15 @@ class GraphState(TypedDict, total=False):
     incident_id: str | None
     open_incident: bool
     summary: dict[str, Any]
+    # Accepted diagnosis driving remediation (primary, or the adjudicated result).
     fault_type: FaultType
     confidence: float
     hypothesis_id: str
+    # Carried for the adjudicator when a second opinion is triggered.
+    primary_fault: FaultType
+    primary_confidence: float
+    second_fault: FaultType
+    second_confidence: float
 
 
 async def _monitor_node(state: GraphState) -> GraphState:
@@ -276,26 +327,41 @@ async def _monitor_node(state: GraphState) -> GraphState:
     }
 
 
-async def _diagnosis_node(state: GraphState) -> GraphState:
-    incident_id = state.get("incident_id")
-    summary = state.get("summary", {})
-    if incident_id is None:
-        return {}
+async def _retrieve_memory(summary: dict[str, Any]) -> str:
+    """Top-3 similar past postmortems as advisory context for diagnosis (empty on none/failure)."""
+    try:
+        vector = await embed(json.dumps(summary))
+        async with SessionLocal() as db:
+            posts = await similar_postmortems(db, vector, k=3)
+    except Exception as exc:  # retrieval is best-effort; never block diagnosis on it
+        log.error("memory_retrieval_failed", error=repr(exc))
+        return ""
+    if not posts:
+        return ""
+    blocks = [f"[past postmortem {p.id}]\n{p.body_md[:2000]}" for p in posts]  # ~500 tokens each
+    return "Advisory context — similar past incidents (advisory only, not ground truth):\n" + (
+        "\n\n".join(blocks)
+    )
 
+
+async def _diagnose_once(
+    incident_id: str, summary: dict[str, Any], memory: str, kind: HypothesisKind, agent_name: str
+) -> tuple[FaultType, float, str]:
+    """One independent diagnosis run: investigate via MCP, persist a hypothesis of `kind`, emit."""
     started = time.perf_counter()
     try:
         async with McpToolbox() as toolbox:
-            diagnosis, usage = await _run_diagnosis(toolbox, summary)
+            diagnosis, usage = await _run_diagnosis(toolbox, summary, memory)
         status = AgentRunStatus.SUCCESS
     except (APIError, OSError) as exc:
-        log.error("diagnosis_failed", error=repr(exc))
+        log.error("diagnosis_failed", agent=agent_name, error=repr(exc))
         diagnosis, usage, status = _fail_closed(f"diagnosis error: {exc}"), Usage(), AgentRunStatus.FAILED
     latency_ms = (time.perf_counter() - started) * 1000.0
 
     async with SessionLocal() as db:
         run = await record_agent_run(
             db,
-            agent_name="diagnosis",
+            agent_name=agent_name,
             model=get_settings().model_strong,
             incident_id=incident_id,
             usage=usage,
@@ -310,7 +376,7 @@ async def _diagnosis_node(state: GraphState) -> GraphState:
                 fault_type=diagnosis.fault_type,
                 confidence=diagnosis.confidence,
                 evidence=[e.model_dump() for e in diagnosis.evidence],
-                kind=HypothesisKind.PRIMARY,
+                kind=kind,
             ),
         )
         hypothesis_id = hypothesis.id
@@ -322,6 +388,7 @@ async def _diagnosis_node(state: GraphState) -> GraphState:
         {
             "incident_id": incident_id,
             "hypothesis_id": hypothesis_id,
+            "kind": kind,
             "fault_type": diagnosis.fault_type,
             "confidence": diagnosis.confidence,
         },
@@ -329,12 +396,122 @@ async def _diagnosis_node(state: GraphState) -> GraphState:
     log.info(
         "hypothesis_written",
         incident_id=incident_id,
+        kind=kind,
         fault_type=diagnosis.fault_type,
         confidence=diagnosis.confidence,
     )
+    return diagnosis.fault_type, diagnosis.confidence, hypothesis_id
+
+
+async def _diagnosis_node(state: GraphState) -> GraphState:
+    incident_id = state.get("incident_id")
+    summary = state.get("summary", {})
+    if incident_id is None:
+        return {}
+    memory = await _retrieve_memory(summary)
+    fault_type, confidence, hypothesis_id = await _diagnose_once(
+        incident_id, summary, memory, HypothesisKind.PRIMARY, "diagnosis"
+    )
     return {
-        "fault_type": diagnosis.fault_type,
-        "confidence": diagnosis.confidence,
+        "fault_type": fault_type,
+        "confidence": confidence,
+        "hypothesis_id": hypothesis_id,
+        "primary_fault": fault_type,
+        "primary_confidence": confidence,
+    }
+
+
+async def _second_opinion_node(state: GraphState) -> GraphState:
+    incident_id = state.get("incident_id")
+    summary = state.get("summary", {})
+    if incident_id is None:
+        return {}
+    memory = await _retrieve_memory(summary)
+    fault_type, confidence, _ = await _diagnose_once(
+        incident_id, summary, memory, HypothesisKind.SECOND_OPINION, "second_opinion"
+    )
+    return {"second_fault": fault_type, "second_confidence": confidence}
+
+
+async def _adjudicator_node(state: GraphState) -> GraphState:
+    incident_id = state.get("incident_id")
+    if incident_id is None:
+        return {}
+    async with SessionLocal() as db:
+        hypotheses = await get_hypotheses_for_incident(db, incident_id)
+    primary = next((h for h in hypotheses if h.kind == HypothesisKind.PRIMARY), None)
+    second = next((h for h in hypotheses if h.kind == HypothesisKind.SECOND_OPINION), None)
+    if primary is None or second is None:
+        return {}
+
+    if primary.fault_type == second.fault_type:
+        # Agreement short-circuits the adjudicator LLM: accept the higher-confidence read.
+        accepted_fault = FaultType(primary.fault_type)
+        accepted_confidence = max(primary.confidence, second.confidence)
+        reasoning = "both independent diagnoses agree"
+        usage, run_status, latency_ms = Usage(), AgentRunStatus.SUCCESS, 0.0
+    else:
+        started = time.perf_counter()
+        try:
+            output, usage, latency_ms = await _run_adjudicator(primary, second)
+            accepted_fault, accepted_confidence, reasoning = (
+                output.fault_type,
+                output.confidence,
+                output.reasoning,
+            )
+            run_status = AgentRunStatus.SUCCESS
+        except (APIError, ValueError, TypeError) as exc:
+            log.error("adjudicator_failed", error=repr(exc))
+            better = primary if primary.confidence >= second.confidence else second
+            accepted_fault = FaultType(better.fault_type)
+            accepted_confidence = better.confidence
+            reasoning = "adjudicator unavailable; took the higher-confidence diagnosis"
+            usage, run_status = Usage(), AgentRunStatus.FAILED
+            latency_ms = (time.perf_counter() - started) * 1000.0
+
+    async with SessionLocal() as db:
+        run = await record_agent_run(
+            db,
+            agent_name="adjudicator",
+            model=get_settings().model_strong,
+            incident_id=incident_id,
+            usage=usage,
+            latency_ms=latency_ms,
+            status=run_status,
+        )
+        hypothesis = await insert_hypothesis(
+            db,
+            Hypothesis(
+                incident_id=incident_id,
+                agent_run_id=run.id,
+                fault_type=accepted_fault,
+                confidence=accepted_confidence,
+                evidence=[{"reasoning": reasoning}],
+                kind=HypothesisKind.ADJUDICATION,
+            ),
+        )
+        hypothesis_id = hypothesis.id
+        await db.commit()
+
+    broker.publish(
+        "hypothesis_ready",
+        {
+            "incident_id": incident_id,
+            "hypothesis_id": hypothesis_id,
+            "kind": HypothesisKind.ADJUDICATION,
+            "fault_type": accepted_fault,
+            "confidence": accepted_confidence,
+        },
+    )
+    log.info(
+        "adjudication_written",
+        incident_id=incident_id,
+        fault_type=accepted_fault,
+        confidence=accepted_confidence,
+    )
+    return {
+        "fault_type": accepted_fault,
+        "confidence": accepted_confidence,
         "hypothesis_id": hypothesis_id,
     }
 
@@ -417,14 +594,28 @@ def _route_after_monitor(state: GraphState) -> str:
     return "diagnosis" if state.get("open_incident") else "end"
 
 
+def _route_after_diagnosis(state: GraphState) -> str:
+    # Low-confidence primary triggers an independent second opinion + adjudication.
+    return "second_opinion" if state.get("confidence", 1.0) < 0.6 else "remediation"
+
+
+# Returns Any: langgraph's compiled graph type has no usable stub (module is ignore-missing-imports).
 def _build_graph() -> Any:
     graph = StateGraph(GraphState)
     graph.add_node("monitor", _monitor_node)
     graph.add_node("diagnosis", _diagnosis_node)
+    graph.add_node("second_opinion", _second_opinion_node)
+    graph.add_node("adjudicator", _adjudicator_node)
     graph.add_node("remediation", _remediation_node)
     graph.set_entry_point("monitor")
     graph.add_conditional_edges("monitor", _route_after_monitor, {"diagnosis": "diagnosis", "end": END})
-    graph.add_edge("diagnosis", "remediation")
+    graph.add_conditional_edges(
+        "diagnosis",
+        _route_after_diagnosis,
+        {"second_opinion": "second_opinion", "remediation": "remediation"},
+    )
+    graph.add_edge("second_opinion", "adjudicator")
+    graph.add_edge("adjudicator", "remediation")
     graph.add_edge("remediation", END)
     return graph.compile()
 

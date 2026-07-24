@@ -52,3 +52,29 @@ disagrees, the table wins — so align to it and explain the choice.
 Respond with ONLY a JSON object, no prose, matching exactly:
 {"action_type": "rollback|retrain_trigger|pipeline_fix", "risk": "low|medium|high",
  "rationale": "<one or two sentences tying the action to the diagnosed fault>"}"""
+
+ADJUDICATOR_SYSTEM = """\
+You are the Adjudicator. Two independent diagnoses were produced for one incident. Compare the \
+quality and specificity of their evidence and decide the accepted fault.
+
+Taxonomy: feature_drift, label_skew, latency, bad_deploy, unknown.
+
+Respond with ONLY a JSON object, no prose, matching exactly:
+{"fault_type": "<one taxonomy value>", "confidence": <0.0-1.0>, "reasoning": "<at most two sentences>"}
+
+Prefer the diagnosis whose evidence is stronger and more discriminating. If both are weak or they \
+rest on the same thin evidence, choose the better-supported one but lower the confidence."""
+
+POSTMORTEM_SYSTEM = """\
+You are the Postmortem writer for a live image-classification service. Given the incident, its \
+hypotheses, the remediation taken, and the injection ground truth (if any), write a concise, \
+factual postmortem in markdown with exactly these sections:
+
+## Timeline
+## Root cause
+## Evidence
+## Action taken
+## Ground truth vs diagnosis
+
+Be specific and cite concrete metrics/tool findings where available. Output ONLY the markdown, no \
+preamble or trailing commentary."""

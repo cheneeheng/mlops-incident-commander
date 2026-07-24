@@ -145,3 +145,37 @@ compile-checked only. Flagged for a runtime smoke test once deps/DB/key are pres
 **Impact / Risk:** Low. Same unvalidatable-LLM caveat as ITER_02 for the remediation node.
 
 **Outcome:** Applied in ITER_03.
+
+### Entry 6
+
+**Type:** Decision
+**Mode:** Autonomous
+**Timestamp:** 2026-07-24
+**Task:** ITER_04 — postmortem memory, second-opinion/adjudicator routing.
+
+**Context:** Forks in the ITER_04 design:
+1. Where the postmortem agent is triggered (execution can happen in the graph auto-path or the
+   approve endpoint).
+2. Whether to expose a similar-postmortems HTTP endpoint (SimilarPostmortem schema exists).
+3. How the adjudicator gets "both hypotheses + evidence" without heavy graph-state threading.
+4. Postmortem generation blocking the approve request.
+
+**Decision:**
+1. Trigger generate_postmortem inside execute_remediation (the single resolution point both paths go
+   through), non-fatally. One execution → one postmortem.
+2. Skip the HTTP similar endpoint — the frontend API client never calls it (YAGNI). Retrieval stays
+   internal to diagnosis (top-3 by pgvector cosine distance).
+3. The adjudicator node loads the incident's PRIMARY + SECOND_OPINION hypotheses (with evidence) from
+   the DB rather than threading evidence through graph state; agreement short-circuits the LLM.
+4. Postmortem runs inline, so the approve request waits on it (LLM + embed). Accepted for MVP;
+   flagged as an easy async follow-up.
+
+Routing: primary confidence < 0.6 → second_opinion → adjudicator → remediation; else straight to
+remediation. Memory retrieval and postmortem embedding are best-effort (failures degrade to empty
+memory / null vector, never block the pipeline).
+
+**Impact / Risk:** Low-moderate. Memory retrieval embeds the window summary and compares to
+postmortem-markdown embeddings (cross-modal) — plan-specified, adequate for a demo. Same
+unvalidatable-LLM/embeddings caveat; sentence-transformers model download also untested here.
+
+**Outcome:** Applied in ITER_04.

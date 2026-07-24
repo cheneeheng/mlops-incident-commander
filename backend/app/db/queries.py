@@ -13,6 +13,7 @@ from backend.app.db.models import (
     Incident,
     Injection,
     MetricWindow,
+    Postmortem,
     PredictionLog,
     Remediation,
     ReferenceProfile,
@@ -57,6 +58,10 @@ async def get_injection(db: AsyncSession, injection_id: str) -> Injection | None
 async def get_active_injections(db: AsyncSession) -> list[Injection]:
     rows = await db.scalars(select(Injection).where(Injection.ended_at.is_(None)))
     return list(rows)
+
+
+async def get_latest_injection(db: AsyncSession) -> Injection | None:
+    return await db.scalar(select(Injection).order_by(Injection.started_at.desc()).limit(1))
 
 
 async def insert_injection(db: AsyncSession, injection: Injection) -> Injection:
@@ -188,6 +193,35 @@ async def get_remediations_for_incident(db: AsyncSession, incident_id: str) -> l
         select(Remediation)
         .where(Remediation.incident_id == incident_id)
         .order_by(Remediation.created_at.asc())
+    )
+    return list(rows)
+
+
+# ---- postmortems -----------------------------------------------------------
+async def insert_postmortem(db: AsyncSession, postmortem: Postmortem) -> Postmortem:
+    db.add(postmortem)
+    await db.flush()
+    return postmortem
+
+
+async def list_postmortems(db: AsyncSession) -> list[Postmortem]:
+    rows = await db.scalars(select(Postmortem).order_by(Postmortem.created_at.desc()))
+    return list(rows)
+
+
+async def get_postmortem(db: AsyncSession, postmortem_id: str) -> Postmortem | None:
+    return await db.get(Postmortem, postmortem_id)
+
+
+async def similar_postmortems(
+    db: AsyncSession, embedding: list[float], k: int = 3
+) -> list[Postmortem]:
+    """Top-k postmortems by cosine distance to the given embedding (nearest first)."""
+    rows = await db.scalars(
+        select(Postmortem)
+        .where(Postmortem.embedding.is_not(None))
+        .order_by(Postmortem.embedding.cosine_distance(embedding))
+        .limit(k)
     )
     return list(rows)
 

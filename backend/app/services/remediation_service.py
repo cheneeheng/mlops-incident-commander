@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.agents.postmortem import generate_postmortem
 from backend.app.db import queries
 from backend.app.db.models import Remediation
 from backend.app.domain.enums import (
@@ -17,6 +18,7 @@ from backend.app.domain.enums import (
     RemediationStatus,
 )
 from backend.app.domain.errors import ConflictError
+from backend.app.observability import log
 from backend.app.services.event_service import broker
 
 _GOOD_VERSION = "v1.0-good"
@@ -46,6 +48,12 @@ async def execute_remediation(db: AsyncSession, remediation: Remediation, *, aut
             "auto": auto,
         },
     )
+    # Postmortem on resolution (own sessions/commit). Non-fatal: a postmortem failure must not
+    # unwind the executed remediation. Runs inline, so the approve request waits on it.
+    try:
+        await generate_postmortem(remediation.incident_id)
+    except Exception as exc:
+        log.error("postmortem_generation_failed", error=repr(exc))
     return remediation
 
 
