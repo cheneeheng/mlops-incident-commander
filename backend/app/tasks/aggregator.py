@@ -1,6 +1,6 @@
 """Metrics aggregator: every 30s, roll up the last window of prediction_log into a metric_window
 (latency percentiles, mean confidence, prediction entropy, class distribution, PSI vs the reference
-profile). Posting windows into the agent graph lands in ITER_02."""
+profile), then post the window to the agent graph for monitor triage (ITER_02)."""
 
 import asyncio
 import math
@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 
 import numpy as np
 
+from backend.app.agents.graph import process_window
 from backend.app.db.models import MetricWindow
 from backend.app.db.queries import (
     get_predictions_between,
@@ -76,6 +77,7 @@ async def _compute_window() -> None:
         )
         await insert_metric_window(db, window)
         await db.commit()
+        window_id = window.id
         log.info(
             "metric_window_written",
             request_count=len(predictions),
@@ -83,6 +85,9 @@ async def _compute_window() -> None:
             psi=psi,
             mean_confidence=window.mean_confidence,
         )
+
+    # Post the committed window to the agent graph (its own sessions; must see the commit).
+    await process_window(window_id)
 
 
 async def run_aggregator() -> None:

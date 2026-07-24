@@ -7,10 +7,14 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.db.models import (
+    AgentRun,
     Deploy,
+    Hypothesis,
+    Incident,
     Injection,
     MetricWindow,
     PredictionLog,
+    Remediation,
     ReferenceProfile,
     ServingLog,
 )
@@ -98,4 +102,92 @@ async def list_windows(db: AsyncSession, since: datetime | None) -> list[MetricW
     if since is not None:
         stmt = stmt.where(MetricWindow.window_start >= since)
     rows = await db.scalars(stmt)
+    return list(rows)
+
+
+async def get_window(db: AsyncSession, window_id: str) -> MetricWindow | None:
+    return await db.get(MetricWindow, window_id)
+
+
+async def get_windows_between(
+    db: AsyncSession, start: datetime, end: datetime
+) -> list[MetricWindow]:
+    rows = await db.scalars(
+        select(MetricWindow)
+        .where(MetricWindow.window_start >= start, MetricWindow.window_start < end)
+        .order_by(MetricWindow.window_start.asc())
+    )
+    return list(rows)
+
+
+# ---- incidents -------------------------------------------------------------
+async def insert_incident(db: AsyncSession, incident: Incident) -> Incident:
+    db.add(incident)
+    await db.flush()  # populate server-side id + sequence-backed number
+    await db.refresh(incident)
+    return incident
+
+
+async def list_incidents(db: AsyncSession) -> list[Incident]:
+    rows = await db.scalars(select(Incident).order_by(Incident.opened_at.desc()))
+    return list(rows)
+
+
+async def get_incident(db: AsyncSession, incident_id: str) -> Incident | None:
+    return await db.get(Incident, incident_id)
+
+
+# ---- agent runs ------------------------------------------------------------
+async def insert_agent_run(db: AsyncSession, run: AgentRun) -> AgentRun:
+    db.add(run)
+    await db.flush()
+    return run
+
+
+async def list_agent_runs(db: AsyncSession) -> list[AgentRun]:
+    rows = await db.scalars(select(AgentRun).order_by(AgentRun.created_at.desc()))
+    return list(rows)
+
+
+async def get_agent_runs_for_incident(db: AsyncSession, incident_id: str) -> list[AgentRun]:
+    rows = await db.scalars(
+        select(AgentRun)
+        .where(AgentRun.incident_id == incident_id)
+        .order_by(AgentRun.created_at.asc())
+    )
+    return list(rows)
+
+
+# ---- hypotheses ------------------------------------------------------------
+async def insert_hypothesis(db: AsyncSession, hypothesis: Hypothesis) -> Hypothesis:
+    db.add(hypothesis)
+    await db.flush()
+    return hypothesis
+
+
+async def get_hypotheses_for_incident(db: AsyncSession, incident_id: str) -> list[Hypothesis]:
+    rows = await db.scalars(
+        select(Hypothesis).where(Hypothesis.incident_id == incident_id)
+    )
+    return list(rows)
+
+
+# ---- remediations (reads; created in ITER_03) ------------------------------
+async def get_remediations_for_incident(db: AsyncSession, incident_id: str) -> list[Remediation]:
+    rows = await db.scalars(
+        select(Remediation)
+        .where(Remediation.incident_id == incident_id)
+        .order_by(Remediation.created_at.asc())
+    )
+    return list(rows)
+
+
+# ---- serving log search (MCP logs tool) ------------------------------------
+async def search_serving_logs(db: AsyncSession, query: str, limit: int = 50) -> list[ServingLog]:
+    rows = await db.scalars(
+        select(ServingLog)
+        .where(ServingLog.message.ilike(f"%{query}%"))
+        .order_by(ServingLog.ts.desc())
+        .limit(limit)
+    )
     return list(rows)

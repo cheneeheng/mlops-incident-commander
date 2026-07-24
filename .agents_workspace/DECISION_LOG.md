@@ -82,3 +82,36 @@ accounting, and bad_deploy revert target.
 **Impact / Risk:** Low. All four are the conservative reading; none expand the schema or entities.
 
 **Outcome:** Applied in ITER_01.
+
+### Entry 4
+
+**Type:** Decision
+**Mode:** Autonomous
+**Timestamp:** 2026-07-24
+**Task:** ITER_02 — agent graph, MCP servers, telemetry.
+
+**Context:** Forks the plan left open in the monitor/diagnosis/MCP design:
+1. The deploys MCP server could expose `Deploy.is_faulty`, which is hidden ground truth.
+2. "A wrapper around every model call writes agent_run" vs. one row per agent invocation, plus how
+   to attribute the monitor's cost to an incident it opens (monitor runs before the incident exists).
+3. Whether to hand-roll the monitor→diagnosis orchestration or use LangGraph.
+4. Cost aggregation in SQL (GROUP BY per dimension) vs. in Python.
+
+**Decision:**
+1. `deploy_dict` in the MCP layer omits `is_faulty`. The diagnosis agent must infer bad_deploy from
+   metrics/logs, never read the flag — exposing it would let the agent cheat the diagnosis.
+2. One agent_run per agent invocation (usage accumulated across the diagnosis tool loop). Telemetry
+   is recorded by the node, not the LLM wrapper, so the monitor's agent_run can carry the incident_id
+   of the incident it just opened. Layering: llm.py does model I/O, telemetry.py persists.
+3. Use LangGraph `StateGraph` (plan-mandated, and ITER_03/04 add branching nodes). Nodes open their
+   own DB sessions; graph state carries only ids + the window summary.
+4. Aggregate costs in Python over agent_run rows — fine at MVP volume, avoids three GROUP BY queries.
+
+Also: diagnosis fails closed to an UNKNOWN, confidence 0.1 hypothesis on the 12-tool-call cap,
+unparseable output, or an API/OS error; tool results truncated to ~2k tokens (8k chars).
+
+**Impact / Risk:** Low-moderate. The LLM/MCP/LangGraph wiring cannot be runtime-validated in this
+environment (no API key, DB, or installed deps); it is written to the documented SDK APIs and
+compile-checked only. Flagged for a runtime smoke test once deps/DB/key are present.
+
+**Outcome:** Applied in ITER_02.
