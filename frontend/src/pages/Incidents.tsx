@@ -3,10 +3,10 @@ import { Link } from "react-router-dom";
 
 import QueryBoundary from "@/components/QueryBoundary";
 import { api } from "@/lib/api";
-import { POLL_INTERVAL_MS } from "@/lib/config";
 
 export default function Incidents() {
-  const q = useQuery({ queryKey: ["incidents"], queryFn: api.listIncidents, refetchInterval: POLL_INTERVAL_MS });
+  // SSE-driven: EventStreamProvider invalidates ["incidents"] on incident/hypothesis/remediation events.
+  const q = useQuery({ queryKey: ["incidents"], queryFn: api.listIncidents });
   const incidents = q.data ?? [];
 
   return (

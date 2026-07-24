@@ -211,3 +211,59 @@ false positives. Runs finalize even on mid-suite failure.
 here; the control case waits the full 10-min timeout by design (no incident expected).
 
 **Outcome:** Applied in ITER_05. Completes the v1 MVP (SKELETON + ITER_01..05).
+
+### Entry 8
+
+**Type:** Decision
+**Mode:** Autonomous
+**Timestamp:** 2026-07-24
+**Task:** Plan-compliance audit (review-against-plan) — finding F1.
+
+**Context:** ITER_03 §04 specifies retrain_trigger/pipeline_fix as "recorded state transitions with
+synthetic completion after a delay." The impl (remediation_service.execute_remediation) completes
+them immediately (no delay, no intermediate state) — same path as rollback minus the deploy swap.
+
+**Decision:** Keep immediate completion; record as an accepted deviation. The delay only buys demo
+realism; the eval scorecard measures time-to-detection (incident.opened_at − t0), never
+time-to-resolution, so no metric is affected. Adding an EXECUTING→EXECUTED delayed transition would
+add a state-machine + an out-of-band task that resolves the incident, for no functional gain (YAGNI).
+User confirmed "follow your suggestions."
+
+**Impact / Risk:** None functional. Retrain/pipeline incidents resolve instantly in the UI (minor
+fidelity loss). Reversible if a demo later needs visible job latency.
+
+**Outcome:** No code change. Documented in the compliance report.
+
+### Entry 9
+
+**Type:** Decision
+**Mode:** Autonomous
+**Timestamp:** 2026-07-24
+**Task:** Plan-compliance audit — findings F2 (SSE-driven invalidation missing) + F3 (EventFeed
+event-name mismatch bug).
+
+**Context:** ITER_03 §05 required dashboard/incident pages to switch from polling to SSE-driven
+invalidation. Never landed: Dashboard/Incidents/Approvals polled via refetchInterval, IncidentDetail
+never refreshed, and EventFeed opened an EventSource but only appended to local state (no
+invalidateQueries anywhere). Separately (F3), EventFeed listened for "metric_window"/"remediation",
+but the backend emits "metrics_window"/"remediation_queued|executed|rejected"/"postmortem_ready",
+so most events were silently dropped.
+
+**Decision:** Fix both together with a single app-level SSE consumer (honoring the plan's "one
+EventSource, single consumer"): new EventStreamProvider (frontend/src/lib/events.tsx) mounted once in
+Layout. It maps each event type → the React Query keys it invalidates (correct names), and exposes
+events via context for EventFeed display. Dropped refetchInterval polling from Dashboard/Incidents/
+Approvals and removed the now-orphaned POLL_INTERVAL_MS constant. IncidentDetail needed no change —
+it is invalidated by the ["incident"] key prefix.
+
+Design sub-decision: the provider ref-guards the EventSource init (StrictMode double-mount → one
+connection) and deliberately has NO close-on-cleanup. Layout never unmounts, so the stream should
+live for the page lifetime; a close-on-cleanup would kill the connection on StrictMode's first
+cleanup, leaving no live stream. This matches the plan's "useRef guard on EventSource init" wording.
+
+**Impact / Risk:** Low. Frontend-only, no new deps (native EventSource + TanStack Query). Untyped-
+checked in this environment (no node_modules); manual trace clean. If an event type is added later,
+its invalidation entry must be added to INVALIDATIONS or the corresponding page won't refresh.
+
+**Outcome:** Applied. Files: frontend/src/lib/events.tsx (new), components/{Layout,EventFeed}.tsx,
+pages/{Dashboard,Incidents,Approvals}.tsx, lib/config.ts.

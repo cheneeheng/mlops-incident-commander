@@ -4,7 +4,6 @@ import EventFeed from "@/components/EventFeed";
 import MetricChart, { type ChartPoint } from "@/components/MetricChart";
 import QueryBoundary from "@/components/QueryBoundary";
 import { api } from "@/lib/api";
-import { POLL_INTERVAL_MS } from "@/lib/config";
 import type { MetricWindow } from "@/lib/types";
 
 const hhmmss = (iso: string) => new Date(iso).toLocaleTimeString();
@@ -14,8 +13,9 @@ function series(windows: MetricWindow[], pick: (w: MetricWindow) => number): Cha
 }
 
 export default function Dashboard() {
-  // Polling now (ITER_01); switches to SSE-driven invalidation in ITER_03.
-  const q = useQuery({ queryKey: ["windows"], queryFn: api.listWindows, refetchInterval: POLL_INTERVAL_MS });
+  // SSE-driven invalidation (ITER_03): EventStreamProvider invalidates ["windows"] on each
+  // metrics_window event, so no polling clock is needed.
+  const q = useQuery({ queryKey: ["windows"], queryFn: api.listWindows });
   const windows = q.data ?? [];
 
   return (

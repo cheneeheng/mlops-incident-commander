@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 
 import { USE_STUBS } from "@/lib/config";
+import { EventStreamProvider } from "@/lib/events";
 
 const NAV = [
   { to: "/", label: "Dashboard", end: true },
@@ -31,7 +32,9 @@ export default function Layout({ children }: { children: ReactNode }) {
           <strong>MLOps Incident Commander</strong>
           {USE_STUBS && <span className="badge medium">sample data</span>}
         </header>
-        <main className="content">{children}</main>
+        <main className="content">
+          <EventStreamProvider>{children}</EventStreamProvider>
+        </main>
       </div>
     </div>
   );

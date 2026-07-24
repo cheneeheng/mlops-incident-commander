@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import ApprovalCard from "@/components/ApprovalCard";
 import QueryBoundary from "@/components/QueryBoundary";
 import { api } from "@/lib/api";
-import { POLL_INTERVAL_MS } from "@/lib/config";
 import type { Hypothesis, Remediation } from "@/lib/types";
 
 type PendingItem = { remediation: Remediation; hypothesis?: Hypothesis };
@@ -23,7 +22,8 @@ async function loadPending(): Promise<PendingItem[]> {
 
 export default function Approvals() {
   const qc = useQueryClient();
-  const q = useQuery({ queryKey: ["approvals"], queryFn: loadPending, refetchInterval: POLL_INTERVAL_MS });
+  // SSE-driven: EventStreamProvider invalidates ["approvals"] on remediation queued/executed/rejected.
+  const q = useQuery({ queryKey: ["approvals"], queryFn: loadPending });
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["approvals"] });
   const approve = useMutation({ mutationFn: api.approveRemediation, onSuccess: invalidate });
