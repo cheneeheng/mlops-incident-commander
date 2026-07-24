@@ -9,8 +9,8 @@ router = APIRouter(prefix="/api", tags=["evals"])
 
 
 @router.post("/eval/runs", response_model=EvalRunOut, status_code=202)
-async def start_run(db: AsyncSession = Depends(get_db)):
-    return await eval_service.start_run(db)
+async def start_run(demo: bool = False, db: AsyncSession = Depends(get_db)):
+    return await eval_service.start_run(db, demo=demo)
 
 
 @router.get("/eval/runs", response_model=list[EvalRunOut])

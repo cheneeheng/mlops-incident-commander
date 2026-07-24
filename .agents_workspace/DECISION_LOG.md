@@ -179,3 +179,35 @@ postmortem-markdown embeddings (cross-modal) — plan-specified, adequate for a 
 unvalidatable-LLM/embeddings caveat; sentence-transformers model download also untested here.
 
 **Outcome:** Applied in ITER_04.
+
+### Entry 7
+
+**Type:** Decision
+**Mode:** Autonomous
+**Timestamp:** 2026-07-24
+**Task:** ITER_05 — eval harness (MVP terminator).
+
+**Context:** Forks in the eval runner design:
+1. How the runner correlates an injection to the incident it caused.
+2. When to read the "accepted" hypothesis given the graph writes primary then (maybe) adjudication.
+3. bad_deploy has no severity magnitude, but the suite calls for 3 cases per fault.
+4. Flipping the frontend USE_STUBS default.
+
+**Decision:**
+1. Correlate by time: the first incident opened at/after the injection start (get_first_incident_after).
+   Cases run sequentially and stop their injection before the next, bounding overlap.
+2. Poll for the accepted hypothesis, preferring ADJUDICATION over PRIMARY. A poll can occasionally
+   catch PRIMARY before ADJUDICATION commits (they land seconds apart in one process_window) — minor
+   scoring imprecision, accepted for the MVP.
+3. bad_deploy's three cases share empty params (repeats) — the fault has no magnitude to vary.
+4. Flip USE_STUBS default to false (MVP ships against the live control plane); VITE_USE_STUBS=1 opts
+   back into sample data. Could not run the smoke test (no deps/DB/key in this environment).
+
+The runner assumes serving + traffic + aggregator + graph are all running; it only drives injections
+and reads results. detection_recall is over fault cases only (control excluded); the control measures
+false positives. Runs finalize even on mid-suite failure.
+
+**Impact / Risk:** Low-moderate. Whole-pipeline orchestration is timing-dependent and unvalidatable
+here; the control case waits the full 10-min timeout by design (no incident expected).
+
+**Outcome:** Applied in ITER_05. Completes the v1 MVP (SKELETON + ITER_01..05).

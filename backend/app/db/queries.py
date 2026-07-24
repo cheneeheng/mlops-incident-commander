@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.db.models import (
     AgentRun,
     Deploy,
+    EvalCase,
+    EvalRun,
     Hypothesis,
     Incident,
     Injection,
@@ -142,6 +144,16 @@ async def get_incident(db: AsyncSession, incident_id: str) -> Incident | None:
     return await db.get(Incident, incident_id)
 
 
+async def get_first_incident_after(db: AsyncSession, ts: datetime) -> Incident | None:
+    """Earliest incident opened at/after ts — used by the eval runner to attribute a detection."""
+    return await db.scalar(
+        select(Incident)
+        .where(Incident.opened_at >= ts)
+        .order_by(Incident.opened_at.asc())
+        .limit(1)
+    )
+
+
 # ---- agent runs ------------------------------------------------------------
 async def insert_agent_run(db: AsyncSession, run: AgentRun) -> AgentRun:
     db.add(run)
@@ -222,6 +234,36 @@ async def similar_postmortems(
         .where(Postmortem.embedding.is_not(None))
         .order_by(Postmortem.embedding.cosine_distance(embedding))
         .limit(k)
+    )
+    return list(rows)
+
+
+# ---- eval runs / cases -----------------------------------------------------
+async def insert_eval_run(db: AsyncSession, run: EvalRun) -> EvalRun:
+    db.add(run)
+    await db.flush()
+    await db.refresh(run)  # populate server-side started_at for immediate serialization
+    return run
+
+
+async def list_eval_runs(db: AsyncSession) -> list[EvalRun]:
+    rows = await db.scalars(select(EvalRun).order_by(EvalRun.started_at.desc()))
+    return list(rows)
+
+
+async def get_eval_run(db: AsyncSession, run_id: str) -> EvalRun | None:
+    return await db.get(EvalRun, run_id)
+
+
+async def insert_eval_case(db: AsyncSession, case: EvalCase) -> EvalCase:
+    db.add(case)
+    await db.flush()
+    return case
+
+
+async def get_eval_cases_for_run(db: AsyncSession, run_id: str) -> list[EvalCase]:
+    rows = await db.scalars(
+        select(EvalCase).where(EvalCase.eval_run_id == run_id).order_by(EvalCase.scenario_name.asc())
     )
     return list(rows)
 
