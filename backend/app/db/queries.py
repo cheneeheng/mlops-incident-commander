@@ -172,7 +172,17 @@ async def get_hypotheses_for_incident(db: AsyncSession, incident_id: str) -> lis
     return list(rows)
 
 
-# ---- remediations (reads; created in ITER_03) ------------------------------
+# ---- remediations ----------------------------------------------------------
+async def insert_remediation(db: AsyncSession, remediation: Remediation) -> Remediation:
+    db.add(remediation)
+    await db.flush()
+    return remediation
+
+
+async def get_remediation(db: AsyncSession, remediation_id: str) -> Remediation | None:
+    return await db.get(Remediation, remediation_id)
+
+
 async def get_remediations_for_incident(db: AsyncSession, incident_id: str) -> list[Remediation]:
     rows = await db.scalars(
         select(Remediation)

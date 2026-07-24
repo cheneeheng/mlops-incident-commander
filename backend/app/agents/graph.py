@@ -24,15 +24,16 @@ from backend.app.agents.llm import (
     truncate_tool_result,
 )
 from backend.app.agents.mcp_client import McpToolbox
-from backend.app.agents.prompts import DIAGNOSIS_SYSTEM, MONITOR_SYSTEM
+from backend.app.agents.prompts import DIAGNOSIS_SYSTEM, MONITOR_SYSTEM, REMEDIATION_SYSTEM
 from backend.app.agents.telemetry import record_agent_run
 from backend.app.config import get_settings
-from backend.app.db.models import Hypothesis, Incident, MetricWindow, ReferenceProfile
+from backend.app.db.models import Hypothesis, Incident, MetricWindow, ReferenceProfile, Remediation
 from backend.app.db.queries import (
     get_reference_profile,
     get_window,
     insert_hypothesis,
     insert_incident,
+    insert_remediation,
 )
 from backend.app.db.session import SessionLocal
 from backend.app.domain.enums import (
@@ -40,9 +41,15 @@ from backend.app.domain.enums import (
     FaultType,
     HypothesisKind,
     IncidentStatus,
+    RemediationActionType,
+    RemediationRisk,
+    RemediationStatus,
     Severity,
 )
+from backend.app.domain.policy import decide_policy, policy_table_text, should_auto_execute
 from backend.app.observability import log
+from backend.app.services.event_service import broker
+from backend.app.services.remediation_service import execute_remediation
 
 _TOOL_CALL_CAP = 12
 _MONITOR_MAX_TOKENS = 512
@@ -69,6 +76,14 @@ class DiagnosisOutput(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     evidence: list[Evidence] = Field(default_factory=list)
     reasoning: str
+
+
+class RemediationProposal(BaseModel):
+    # The policy table is authoritative for action/risk; only the rationale is kept from the LLM.
+    model_config = ConfigDict(extra="forbid")
+    action_type: RemediationActionType
+    risk: RemediationRisk
+    rationale: str
 
 
 def _window_summary(window: MetricWindow) -> dict[str, Any]:
@@ -172,12 +187,36 @@ async def _run_diagnosis(
             return _fail_closed("tool-call cap reached before a conclusion"), usage
 
 
+# ---- remediation -------------------------------------------------------------------------------
+async def _run_remediation(
+    fault_type: FaultType, confidence: float
+) -> tuple[RemediationProposal, Usage, float]:
+    usage = Usage()
+    started = time.perf_counter()
+    payload = {
+        "hypothesis": {"fault_type": fault_type, "confidence": confidence},
+        "policy_table": policy_table_text(),
+    }
+    response = await get_client().messages.create(
+        model=get_settings().model_strong,
+        max_tokens=_MONITOR_MAX_TOKENS,
+        system=REMEDIATION_SYSTEM,
+        messages=[{"role": "user", "content": json.dumps(payload)}],
+    )
+    usage.add(response.usage)
+    proposal = RemediationProposal.model_validate(extract_json(final_text(response)))
+    return proposal, usage, (time.perf_counter() - started) * 1000.0
+
+
 # ---- graph nodes -------------------------------------------------------------------------------
 class GraphState(TypedDict, total=False):
     window_id: str
     incident_id: str | None
     open_incident: bool
     summary: dict[str, Any]
+    fault_type: FaultType
+    confidence: float
+    hypothesis_id: str
 
 
 async def _monitor_node(state: GraphState) -> GraphState:
@@ -224,11 +263,17 @@ async def _monitor_node(state: GraphState) -> GraphState:
             status=AgentRunStatus.SUCCESS,
         )
         await db.commit()
-        return {
-            "open_incident": decision.open_incident,
-            "incident_id": incident_id,
-            "summary": summary,
-        }
+
+    if incident_id is not None:
+        broker.publish(
+            "incident_opened",
+            {"incident_id": incident_id, "severity": decision.severity, "reason": decision.reason},
+        )
+    return {
+        "open_incident": decision.open_incident,
+        "incident_id": incident_id,
+        "summary": summary,
+    }
 
 
 async def _diagnosis_node(state: GraphState) -> GraphState:
@@ -257,7 +302,7 @@ async def _diagnosis_node(state: GraphState) -> GraphState:
             latency_ms=latency_ms,
             status=status,
         )
-        await insert_hypothesis(
+        hypothesis = await insert_hypothesis(
             db,
             Hypothesis(
                 incident_id=incident_id,
@@ -268,21 +313,104 @@ async def _diagnosis_node(state: GraphState) -> GraphState:
                 kind=HypothesisKind.PRIMARY,
             ),
         )
+        hypothesis_id = hypothesis.id
         await _mark_diagnosing(db, incident_id)
         await db.commit()
+
+    broker.publish(
+        "hypothesis_ready",
+        {
+            "incident_id": incident_id,
+            "hypothesis_id": hypothesis_id,
+            "fault_type": diagnosis.fault_type,
+            "confidence": diagnosis.confidence,
+        },
+    )
     log.info(
         "hypothesis_written",
         incident_id=incident_id,
         fault_type=diagnosis.fault_type,
         confidence=diagnosis.confidence,
     )
-    return {}
+    return {
+        "fault_type": diagnosis.fault_type,
+        "confidence": diagnosis.confidence,
+        "hypothesis_id": hypothesis_id,
+    }
 
 
 async def _mark_diagnosing(db: AsyncSession, incident_id: str) -> None:
     incident = await db.get(Incident, incident_id)
     if incident is not None and incident.status == IncidentStatus.OPEN:
         incident.status = IncidentStatus.DIAGNOSING
+
+
+async def _remediation_node(state: GraphState) -> GraphState:
+    incident_id = state.get("incident_id")
+    hypothesis_id = state.get("hypothesis_id")
+    if incident_id is None or hypothesis_id is None:
+        return {}
+    fault_type = state.get("fault_type", FaultType.UNKNOWN)
+    confidence = state.get("confidence", 0.0)
+
+    # Policy is authoritative for action + risk; the LLM only supplies a rationale (logged).
+    action, risk = decide_policy(fault_type, confidence)
+    started = time.perf_counter()
+    try:
+        proposal, usage, _ = await _run_remediation(fault_type, confidence)
+        rationale = proposal.rationale
+        run_status = AgentRunStatus.SUCCESS
+    except (APIError, ValueError, TypeError) as exc:
+        log.error("remediation_llm_failed", error=repr(exc))
+        rationale, usage, run_status = "policy fallback (LLM unavailable)", Usage(), AgentRunStatus.FAILED
+    latency_ms = (time.perf_counter() - started) * 1000.0
+
+    auto = should_auto_execute(risk, confidence)
+    async with SessionLocal() as db:
+        await record_agent_run(
+            db,
+            agent_name="remediation",
+            model=get_settings().model_strong,
+            incident_id=incident_id,
+            usage=usage,
+            latency_ms=latency_ms,
+            status=run_status,
+        )
+        remediation = await insert_remediation(
+            db,
+            Remediation(
+                incident_id=incident_id,
+                hypothesis_id=hypothesis_id,
+                action_type=action,
+                risk=risk,
+                status=RemediationStatus.PENDING,
+            ),
+        )
+        if auto:
+            await execute_remediation(db, remediation, auto=True)  # commits + emits executed
+        else:
+            incident = await db.get(Incident, incident_id)
+            if incident is not None and incident.status != IncidentStatus.RESOLVED:
+                incident.status = IncidentStatus.AWAITING_APPROVAL
+            await db.commit()
+            broker.publish(
+                "remediation_queued",
+                {
+                    "remediation_id": remediation.id,
+                    "incident_id": incident_id,
+                    "action_type": action,
+                    "risk": risk,
+                },
+            )
+    log.info(
+        "remediation_created",
+        incident_id=incident_id,
+        action_type=action,
+        risk=risk,
+        auto=auto,
+        rationale=rationale,
+    )
+    return {}
 
 
 def _route_after_monitor(state: GraphState) -> str:
@@ -293,9 +421,11 @@ def _build_graph() -> Any:
     graph = StateGraph(GraphState)
     graph.add_node("monitor", _monitor_node)
     graph.add_node("diagnosis", _diagnosis_node)
+    graph.add_node("remediation", _remediation_node)
     graph.set_entry_point("monitor")
     graph.add_conditional_edges("monitor", _route_after_monitor, {"diagnosis": "diagnosis", "end": END})
-    graph.add_edge("diagnosis", END)
+    graph.add_edge("diagnosis", "remediation")
+    graph.add_edge("remediation", END)
     return graph.compile()
 
 

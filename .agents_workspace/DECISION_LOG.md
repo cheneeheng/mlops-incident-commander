@@ -115,3 +115,33 @@ environment (no API key, DB, or installed deps); it is written to the documented
 compile-checked only. Flagged for a runtime smoke test once deps/DB/key are present.
 
 **Outcome:** Applied in ITER_02.
+
+### Entry 5
+
+**Type:** Decision
+**Mode:** Autonomous
+**Timestamp:** 2026-07-24
+**Task:** ITER_03 — remediation, approvals, SSE.
+
+**Context:** Forks in the remediation/approval design:
+1. The remediation agent outputs a `rationale`, but Remediation has no rationale column (schema is
+   fixed upfront — no new columns/tables per iteration).
+2. "Synthetic completion after a delay" for retrain_trigger/pipeline_fix executors.
+3. Which incident status a queued (pending) vs executed remediation implies.
+4. How the service signals HTTP 409 without a business-logic leak into the router.
+
+**Decision:**
+1. Persist only action_type/risk/status on Remediation; the LLM rationale is logged, not stored.
+   The Sonnet remediation node is still called (its cost is real agent_run telemetry, and it
+   demonstrates the propose-vs-policy reconciliation) — policy table is authoritative for action+risk.
+2. Executors complete synthetically and immediately (rollback does a real, safe deploy swap to
+   v1.0-good; retrain_trigger/pipeline_fix are recorded state transitions). Dropped the artificial
+   delay — it would need fragile detached-task machinery for no functional value.
+3. Queued remediation moves the incident to awaiting_approval; execution (auto or approved) moves it
+   to resolved + closed_at. Rejection leaves the incident as-is.
+4. Service raises domain `ConflictError`; a single `@app.exception_handler(ConflictError)` in main.py
+   maps it to 409. Routers stay thin.
+
+**Impact / Risk:** Low. Same unvalidatable-LLM caveat as ITER_02 for the remediation node.
+
+**Outcome:** Applied in ITER_03.

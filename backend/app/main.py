@@ -5,10 +5,12 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from backend.app.config import get_settings
+from backend.app.domain.errors import ConflictError
 from backend.app.observability import CorrelationIdMiddleware, configure_logging, log
 from backend.app.routers import (
     costs,
@@ -62,6 +64,11 @@ for module in (
     events,
 ):
     app.include_router(module.router)
+
+
+@app.exception_handler(ConflictError)
+async def _conflict_handler(request: Request, exc: ConflictError) -> JSONResponse:
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
 
 
 @app.get("/health", tags=["health"])

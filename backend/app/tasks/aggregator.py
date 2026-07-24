@@ -17,6 +17,7 @@ from backend.app.db.queries import (
 )
 from backend.app.db.session import SessionLocal
 from backend.app.observability import log
+from backend.app.services.event_service import broker
 
 _WINDOW_S = 30.0
 _NUM_CLASSES = 10  # CIFAR-10; kept local so the control plane doesn't import the serving CNN stack.
@@ -78,6 +79,13 @@ async def _compute_window() -> None:
         await insert_metric_window(db, window)
         await db.commit()
         window_id = window.id
+        window_event = {
+            "window_id": window_id,
+            "window_end": window.window_end.isoformat(),
+            "latency_p95": window.latency_p95,
+            "psi_score": psi,
+            "mean_confidence": window.mean_confidence,
+        }
         log.info(
             "metric_window_written",
             request_count=len(predictions),
@@ -86,6 +94,7 @@ async def _compute_window() -> None:
             mean_confidence=window.mean_confidence,
         )
 
+    broker.publish("metrics_window", window_event)
     # Post the committed window to the agent graph (its own sessions; must see the commit).
     await process_window(window_id)
 
