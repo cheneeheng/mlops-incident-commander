@@ -267,3 +267,32 @@ its invalidation entry must be added to INVALIDATIONS or the corresponding page 
 
 **Outcome:** Applied. Files: frontend/src/lib/events.tsx (new), components/{Layout,EventFeed}.tsx,
 pages/{Dashboard,Incidents,Approvals}.tsx, lib/config.ts.
+
+### Entry 10
+
+**Type:** Decision
+**Mode:** Autonomous
+**Timestamp:** 2026-07-24
+**Task:** Resolve the pending uv.lock question left open by handoff
+HANDOFF-20260724-1833-d350b3a8.md (Open #1: commit the untracked lockfile vs delete it).
+
+**Context:** `uv.lock` appeared untracked at the repo root as a side effect of a failed `uv run`
+(Windows file-lock error while building the venv). The prior session did not commit it and flagged
+commit-vs-delete as a pending decision. Ambiguity: the file was generated incidentally rather than
+deliberately, so it was unclear whether its contents were trustworthy or wanted.
+
+**Decision:** Commit it. Two reasons. (1) Content is trustworthy independent of how it was
+generated: `uv lock --check` resolves all 131 packages and reports the lock in sync with
+`pyproject.toml` — resolution completes before venv installation, so the later install failure did
+not corrupt it. (2) This repo is a deployable application, not a library: the Makefile drives every
+workflow through `uv sync` / `uv run`, and `uv.lock` is absent from `.gitignore`. Committing the
+lockfile is the standard uv convention for applications and is what makes those Makefile targets
+reproducible across machines and CI.
+
+**Impact / Risk:** Low and reversible. Adds a 3086-line generated file to the repo; it will now
+produce diff noise whenever dependencies change, which is the intended trade for reproducibility.
+The lock pins the resolution seen on Windows/Python 3.12+; its `resolution-markers` cover
+win32 and non-win32 across 3.12–3.15, so other platforms resolve from the same lock.
+
+**Outcome:** Applied. Committed as the sole change in a chore commit on
+`feat/v1-mvp-incident-commander`.
