@@ -243,6 +243,25 @@ explicitly advisory, so a bad match cannot force a wrong diagnosis.
 **Consequences:** Numbers are gap-tolerant but collision-free under concurrency. Two identifier schemes
 coexist deliberately: opaque IDs for references, sequence numbers for humans.
 
+### 2026-07-25 — Incident detection is model judgment, not a threshold rule
+
+**Status:** Accepted
+**Context:** A window is anomalous only relative to baseline across four signals at once (latency
+p95/p99, mean confidence, entropy, PSI). A threshold ladder would need per-signal cutoffs plus
+combining rules, and each fault type moves a different subset of signals — `latency` leaves the
+distribution untouched, `label_skew` leaves confidence roughly stable.
+**Decision:** No thresholds are configured anywhere. The monitor (cheap model) receives the window
+plus the reference profile and returns `{open_incident, severity, reason}`, validated before use.
+The PSI figures in `MONITOR_SYSTEM` (`> 0.2` notable, `> 0.3` severe) are prose guidance inside the
+prompt, not code. The only numeric thresholds in the system are in `domain/policy.py`: the `< 0.5`
+risk bump and the `>= 0.85` auto-execute floor — both downstream of diagnosis, both on confidence,
+never on a metric.
+**Consequences:** Detection is non-deterministic — two identical windows may be triaged differently,
+and it cannot be unit-tested. This is why `eval/runner.py` exists: sensitivity is tuned against the
+scorecard's detection recall over the labeled suite, by editing the prompt, not a config value. Every
+window costs one cheap-model call. A future numeric pre-filter (skip the model when all four signals
+sit within baseline) would cut that cost and supersede this entry.
+
 ### 2026-07-24 — Unused terminal statuses retained in the enums
 
 **Status:** Accepted

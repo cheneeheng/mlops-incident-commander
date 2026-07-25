@@ -20,6 +20,11 @@ remediation queued → human approves → postmortem appears.
 - `frontend/` — React + Vite + TypeScript dashboard (8 screens).
 - `scripts/` — utilities (CNN weight seeding).
 
+Design rationale — component diagrams, the detect → diagnose → remediate → postmortem flow, the state
+machines, and the Key Decisions log (why the two processes share one database, why the policy table
+outranks the LLM, why detection is model judgment rather than a threshold) —
+lives in [`.agents_workspace/ARCHITECTURE.md`](.agents_workspace/ARCHITECTURE.md).
+
 ## Prerequisites
 
 - Python 3.12, [uv](https://docs.astral.sh/uv/), Node 20, Docker.
