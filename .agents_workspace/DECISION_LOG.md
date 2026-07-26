@@ -296,3 +296,32 @@ win32 and non-win32 across 3.12–3.15, so other platforms resolve from the same
 
 **Outcome:** Applied. Committed as the sole change in a chore commit on
 `feat/v1-mvp-incident-commander`.
+
+### Entry 11
+
+**Type:** Decision
+**Mode:** Autonomous
+**Timestamp:** 2026-07-26T00:00:00+02:00
+**Task:** Establish an independent `main` and cut the v0.1.0 release from `feat/v1-mvp-incident-commander`.
+
+**Context:** The repository had no `main` branch — all 19 commits lived on the feature branch, whose
+root commit was the full SKELETON scaffold. A PR needs a base, and the release flow requires tagging
+a merge commit on `main`. Two sub-decisions had no obvious answer: what `main`'s root commit should
+contain, and whether the version bump should ride a separate `chore/release-v0.1.0` branch as the
+release-flow pipeline prescribes.
+
+**Decision:** Created an orphan root commit on `main` holding only a short `README.md` and the
+existing `.gitignore`, dated just before the original first commit, then rebased all 19 commits onto
+it (`git rebase --onto main --root`). The one add/add conflict, on `README.md`, was resolved to the
+SKELETON version, so the rebased tip tree is byte-identical to the pre-rebase tip. The release docs
+were committed onto the feature branch rather than a separate release branch: a `chore/release-v0.1.0`
+branch cut from `main` would contain none of the code being released, and the feature-branch PR into
+`main` is the merge commit the v0.1.0 tag must point at.
+
+**Impact / Risk:** All commit SHAs on the feature branch changed, requiring a force-push; the
+pre-rebase tip was preserved locally as `backup/pre-rebase-20260726`. The release commit is mixed
+into the feature branch's history rather than isolated, which is a one-time consequence of this
+being the repository's first release.
+
+**Outcome:** `main` published; feature branch force-pushed with `--force-with-lease`; tree verified
+identical to the pre-rebase state via an empty `git diff` against the backup ref.

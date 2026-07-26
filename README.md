@@ -17,6 +17,7 @@ remediation queued → human approves → postmortem appears.
 | [Conceptual model](.agents_workspace/CONCEPTUAL-MODEL.md) | **Start here.** What is production-shaped, what is scaffolding, what was deliberately left out, and the trade-offs behind it |
 | [Architecture](.agents_workspace/ARCHITECTURE.md) | Diagrams (context, components, the core flow, data model, state machines) + the Key Decisions log |
 | [Guide](docs/guide/index.md) | Using the dashboard (`GT-`/`HT-`/`TS-`) and operating the system (`OP-`) |
+| [Changelog](CHANGELOG.md) | What shipped in each release |
 
 ## Architecture
 
