@@ -3,6 +3,36 @@
 Living picture of the whole current system. Diagrams show what exists; the Key Decisions log holds
 the durable "why". Update the affected diagram and append a decision whenever the system's shape changes.
 
+## Conceptual model — three rings
+
+Which ring a piece sits in tells you how seriously to take it: Ring 3 is scaffolding that exists only
+so the loop has something to watch and something to break; Ring 1 is written as if it were production.
+Full write-up — what is real vs mocked, what was deliberately not built, and the defining trade-offs —
+in [`CONCEPTUAL-MODEL.md`](CONCEPTUAL-MODEL.md).
+
+```mermaid
+flowchart TB
+    subgraph sim[Ring 3 — Simulated world<br/>exists to make the loop observable]
+        traffic[Synthetic traffic generator]
+        inject[Fault injection harness<br/>4 labeled fault types]
+        cnn[CIFAR-10 CNN + deploy rows]
+    end
+    subgraph sense[Ring 2 — Sensing<br/>deterministic, no LLM]
+        agg[Aggregator: 30s windows<br/>latency pXX, entropy, confidence, PSI]
+        mcpr[MCP tool servers<br/>read-only, ground truth withheld]
+    end
+    subgraph reason[Ring 1 — The product<br/>agentic reasoning under guardrails]
+        mon[monitor: is this window an incident?]
+        dx[diagnosis: which fault, with evidence?]
+        adj[second opinion + adjudicator]
+        pol[policy table: action + risk<br/>authoritative over the LLM]
+        pm[postmortem -> pgvector memory]
+    end
+    sim --> sense --> reason
+    pm -.advisory recall.-> dx
+    pol -.rollback swaps active deploy.-> cnn
+```
+
 ## System context
 
 External actors and systems around the boundary.

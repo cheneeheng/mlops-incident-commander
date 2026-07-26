@@ -10,6 +10,14 @@ tokens, dollars, and latency, and a scored eval harness replays a labeled incide
 **Core flow:** inject fault → monitor opens incident → diagnosis produces cited hypothesis →
 remediation queued → human approves → postmortem appears.
 
+## Documentation
+
+| Doc | For |
+|---|---|
+| [Conceptual model](.agents_workspace/CONCEPTUAL-MODEL.md) | **Start here.** What is production-shaped, what is scaffolding, what was deliberately left out, and the trade-offs behind it |
+| [Architecture](.agents_workspace/ARCHITECTURE.md) | Diagrams (context, components, the core flow, data model, state machines) + the Key Decisions log |
+| [Guide](docs/guide/index.md) | Using the dashboard (`GT-`/`HT-`/`TS-`) and operating the system (`OP-`) |
+
 ## Architecture
 
 - `backend/` — control plane FastAPI app: metrics, injections, deploys, incidents, remediations,
