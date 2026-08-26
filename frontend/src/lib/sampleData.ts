@@ -67,7 +67,7 @@ const sampleAgentRuns: AgentRun[] = [
 ];
 
 const sampleRemediations: Remediation[] = [
-  { id: "rem_1", incident_id: "inc_1002", hypothesis_id: "hyp_1", action_type: "rollback", risk: "low", status: "pending", created_at: iso(4 * 60_000), executed_at: null },
+  { id: "rem_1", incident_id: "inc_1002", hypothesis_id: "hyp_1", action_type: "rollback", risk: "low", rationale: "Confidence is high and the bad deploy is the only change in the window; rolling back to v1.0-good is reversible.", status: "pending", created_at: iso(4 * 60_000), executed_at: null },
 ];
 
 export const sampleIncidentDetail: IncidentDetail = {

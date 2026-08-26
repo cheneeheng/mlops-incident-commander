@@ -85,6 +85,7 @@ export type Remediation = {
   hypothesis_id: string;
   action_type: RemediationActionType;
   risk: RemediationRisk;
+  rationale: string;
   status: RemediationStatus;
   created_at: string;
   executed_at: string | null;

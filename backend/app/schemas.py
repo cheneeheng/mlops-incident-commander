@@ -121,6 +121,7 @@ class RemediationOut(BaseModel):
     hypothesis_id: str
     action_type: RemediationActionType
     risk: RemediationRisk
+    rationale: str
     status: RemediationStatus
     created_at: datetime
     executed_at: datetime | None

@@ -35,6 +35,7 @@ export default function IncidentTimeline({
           <strong>Remediation</strong> — {r.action_type}{" "}
           <span className={`badge ${r.risk}`}>{r.risk} risk</span>{" "}
           <span className="muted">{r.status}</span>
+          {r.rationale && <p className="muted">{r.rationale}</p>}
         </div>
       ))}
 
