@@ -25,6 +25,7 @@ from backend.app.agents.llm import (
 )
 from backend.app.agents.embeddings import embed
 from backend.app.agents.mcp_client import McpToolbox
+from backend.app.agents.postmortem import strip_ground_truth
 from backend.app.agents.prompts import (
     ADJUDICATOR_SYSTEM,
     DIAGNOSIS_SYSTEM,
@@ -338,7 +339,11 @@ async def _retrieve_memory(summary: dict[str, Any]) -> str:
         return ""
     if not posts:
         return ""
-    blocks = [f"[past postmortem {p.id}]\n{p.body_md[:2000]}" for p in posts]  # ~500 tokens each
+    # Ground truth is stripped before any postmortem reaches a diagnosing agent: recalling a
+    # past incident's answer key would let diagnosis read the label instead of inferring it.
+    blocks = [  # ~500 tokens each
+        f"[past postmortem {p.id}]\n{strip_ground_truth(p.body_md)[:2000]}" for p in posts
+    ]
     return "Advisory context — similar past incidents (advisory only, not ground truth):\n" + (
         "\n\n".join(blocks)
     )

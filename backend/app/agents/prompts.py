@@ -76,5 +76,9 @@ factual postmortem in markdown with exactly these sections:
 ## Action taken
 ## Ground truth vs diagnosis
 
+Keep the injection ground truth inside the final section only. Never state it, hint at it, or \
+reason from it in Timeline, Root cause, Evidence, or Action taken — those sections are replayed to \
+future diagnosing agents, which must infer the fault from metrics and must not be shown the answer.
+
 Be specific and cite concrete metrics/tool findings where available. Output ONLY the markdown, no \
 preamble or trailing commentary."""
