@@ -23,6 +23,11 @@ export default function ApprovalCard({
         </div>
         <a href={`/incidents/${remediation.incident_id}`}>incident {remediation.incident_id}</a>
       </div>
+      {remediation.rationale && (
+        <p className="muted" style={{ margin: "8px 0" }}>
+          {remediation.rationale}
+        </p>
+      )}
       {hypothesis && (
         <div className="muted" style={{ margin: "8px 0" }}>
           Diagnosis: {hypothesis.fault_type} ({(hypothesis.confidence * 100).toFixed(0)}% confidence)

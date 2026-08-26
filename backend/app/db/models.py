@@ -143,6 +143,9 @@ class Remediation(Base):
     action_type: Mapped[str] = mapped_column(String(32))
     risk: Mapped[str] = mapped_column(String(16))
     status: Mapped[str] = mapped_column(String(32), index=True)
+    # Why this action, in the remediation agent's words. Advisory only: action_type and risk come
+    # from decide_policy, never from the model. Empty when the model was unavailable.
+    rationale: Mapped[str] = mapped_column(Text, server_default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     executed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

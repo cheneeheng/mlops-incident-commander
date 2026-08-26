@@ -565,6 +565,7 @@ async def _remediation_node(state: GraphState) -> GraphState:
                 hypothesis_id=hypothesis_id,
                 action_type=action,
                 risk=risk,
+                rationale=rationale,
                 status=RemediationStatus.PENDING,
             ),
         )
