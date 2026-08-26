@@ -28,3 +28,6 @@ frontend/dist/
 
 # OS
 .DS_Store
+
+# Internal working docs (not published)
+docs/internals/
