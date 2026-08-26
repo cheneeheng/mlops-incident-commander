@@ -3,9 +3,8 @@
 What this repository is actually claiming, which parts are production-shaped, which parts are
 scaffolding built only to make the loop observable, and what was deliberately left out.
 
-Read this before extending the system. The diagram version of the same idea — the three rings — lives
-in [`ARCHITECTURE.md`](ARCHITECTURE.md#conceptual-model--three-rings), alongside the component
-diagrams and the Key Decisions log. For using or operating the system, see
+Read this before extending the system. The component diagrams and the Key Decisions log live in
+[`ARCHITECTURE.md`](ARCHITECTURE.md). For using or operating the system, see
 [`docs/guide/`](../docs/guide/index.md).
 
 ## The idea
@@ -20,6 +19,29 @@ is allowed to execute.
 
 The system is shaped as three concentric rings, and knowing which ring a piece sits in tells you how
 seriously to take it.
+
+```mermaid
+flowchart TB
+    subgraph sim[Ring 3 — Simulated world<br/>exists to make the loop observable]
+        traffic[Synthetic traffic generator]
+        inject[Fault injection harness<br/>4 labeled fault types]
+        cnn[CIFAR-10 CNN + deploy rows]
+    end
+    subgraph sense[Ring 2 — Sensing<br/>deterministic, no LLM]
+        agg[Aggregator: 30s windows<br/>latency pXX, entropy, confidence, PSI]
+        mcpr[MCP tool servers<br/>read-only, ground truth withheld]
+    end
+    subgraph reason[Ring 1 — The product<br/>agentic reasoning under guardrails]
+        mon[monitor: is this window an incident?]
+        dx[diagnosis: which fault, with evidence?]
+        adj[second opinion + adjudicator]
+        pol[policy table: action + risk<br/>authoritative over the LLM]
+        pm[postmortem -> pgvector memory]
+    end
+    sim --> sense --> reason
+    pm -.advisory recall.-> dx
+    pol -.rollback swaps active deploy.-> cnn
+```
 
 | Ring | What it is | How to read it |
 |---|---|---|

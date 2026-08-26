@@ -3,36 +3,6 @@
 Living picture of the whole current system. Diagrams show what exists; the Key Decisions log holds
 the durable "why". Update the affected diagram and append a decision whenever the system's shape changes.
 
-## Conceptual model — three rings
-
-Which ring a piece sits in tells you how seriously to take it: Ring 3 is scaffolding that exists only
-so the loop has something to watch and something to break; Ring 1 is written as if it were production.
-Full write-up — what is real vs mocked, what was deliberately not built, and the defining trade-offs —
-in [`CONCEPTUAL-MODEL.md`](CONCEPTUAL-MODEL.md).
-
-```mermaid
-flowchart TB
-    subgraph sim[Ring 3 — Simulated world<br/>exists to make the loop observable]
-        traffic[Synthetic traffic generator]
-        inject[Fault injection harness<br/>4 labeled fault types]
-        cnn[CIFAR-10 CNN + deploy rows]
-    end
-    subgraph sense[Ring 2 — Sensing<br/>deterministic, no LLM]
-        agg[Aggregator: 30s windows<br/>latency pXX, entropy, confidence, PSI]
-        mcpr[MCP tool servers<br/>read-only, ground truth withheld]
-    end
-    subgraph reason[Ring 1 — The product<br/>agentic reasoning under guardrails]
-        mon[monitor: is this window an incident?]
-        dx[diagnosis: which fault, with evidence?]
-        adj[second opinion + adjudicator]
-        pol[policy table: action + risk<br/>authoritative over the LLM]
-        pm[postmortem -> pgvector memory]
-    end
-    sim --> sense --> reason
-    pm -.advisory recall.-> dx
-    pol -.rollback swaps active deploy.-> cnn
-```
-
 ## System context
 
 External actors and systems around the boundary.
@@ -67,6 +37,11 @@ flowchart TB
             adjud --> remed
         end
         agent_graph --> queries
+        pm[postmortem<br/>generate + embed 384-dim]
+        services --> pm
+        remed --> pm
+        pm --> queries
+        pm -.top-3 advisory recall.-> diagnosis
         broker[[SSE broker<br/>in-process]]
     end
     subgraph serving_proc[Serving process :8001]
@@ -82,6 +57,38 @@ flowchart TB
     routers -.SSE.-> broker
     agent_graph -.publish.-> broker
 ```
+
+## Agent graph — nodes, models, and outputs
+
+The five LangGraph nodes and the two conditional edges that route between them
+(`agents/graph.py::_build_graph`). Every node validates its model output before touching state.
+
+```mermaid
+flowchart TB
+    win([metric_window<br/>posted by the aggregator]) --> monitor
+    monitor["<b>monitor</b> · cheap model<br/>triage the window against the clean baseline<br/>→ MonitorDecision"]
+    monitor -->|open_incident false| stop([end — no incident, window discarded])
+    monitor -->|open_incident true<br/>incident row inserted| diagnosis
+    diagnosis["<b>diagnosis</b> · strong model + MCP tools<br/>investigate until the fault can be named and cited<br/>→ DiagnosisOutput, kind=primary"]
+    diagnosis -->|confidence 0.6 or higher| remediation
+    diagnosis -->|confidence below 0.6| second
+    second["<b>second_opinion</b> · strong model + MCP tools<br/>independent re-diagnosis, never shown the primary<br/>→ DiagnosisOutput, kind=second_opinion"]
+    second --> adjud
+    adjud["<b>adjudicator</b> · strong model<br/>reconcile the two reads into the accepted one<br/>→ AdjudicatorOutput, kind=adjudication"]
+    adjud --> remediation
+    remediation["<b>remediation</b> · strong model<br/>rationale only — decide_policy already fixed action + risk<br/>→ RemediationProposal"]
+    remediation --> out([auto-execute, or park in awaiting_approval])
+    mem[(postmortem memory<br/>pgvector)] -.top-3 advisory.-> diagnosis
+    mem -.top-3 advisory.-> second
+```
+
+| Node | Model | What it sees | What it does | Validated output | Writes | Fails closed to |
+|---|---|---|---|---|---|---|
+| `monitor` | `model_cheap` (Haiku 4.5) | Window summary + the `v1.0-good` reference profile | Decides whether this window is an incident at all. No thresholds exist — PSI figures live in the prompt as prose | `MonitorDecision{open_incident, severity, reason}` | `incident` (OPEN) + `agent_run`; publishes `incident_opened` | No incident; the graph ends on that window |
+| `diagnosis` | `model_strong` (Sonnet 5) + 4 read-only MCP servers, ≤12 tool calls | Trigger window + top-3 similar past postmortems (advisory) | Investigates through the tools until it can name one fault type and cite the findings behind it | `DiagnosisOutput{fault_type, confidence 0–1, evidence[], reasoning}` | `hypothesis` (kind=primary) + `agent_run`; incident → DIAGNOSING; publishes `hypothesis_ready` | `UNKNOWN` at confidence `0.1` — on API error, unparseable output, or the tool cap |
+| `second_opinion` | Same as `diagnosis` | Same inputs — never the primary hypothesis | Runs the whole diagnosis again, independently, so the two reads can disagree honestly | `DiagnosisOutput` (kind=second_opinion) | `hypothesis` + `agent_run`; publishes `hypothesis_ready` | Same as `diagnosis` |
+| `adjudicator` | `model_strong` | Both hypotheses: fault type, confidence, evidence | Reconciles the disagreement. Identical fault types short-circuit the LLM entirely — no call, take the higher confidence | `AdjudicatorOutput{fault_type, confidence, reasoning}` | `hypothesis` (kind=adjudication) + `agent_run` | The higher-confidence of the two hypotheses |
+| `remediation` | `model_strong` | Accepted fault + confidence + the rendered policy table | Supplies a *rationale only*. `decide_policy` already produced the action and risk; the model's `action_type`/`risk` fields are discarded | `RemediationProposal{action_type, risk, rationale}` — only `rationale` is kept | `remediation` (PENDING) + `agent_run`; then auto-executes or sets AWAITING_APPROVAL + publishes `remediation_queued` | Rationale `"policy fallback (LLM unavailable)"`; the policy outcome is unchanged |
 
 ## Key flow — detect → diagnose → remediate → postmortem
 
@@ -105,6 +112,7 @@ sequenceDiagram
     GR->>GR: monitor triages vs reference profile
     alt window is anomalous
         GR->>DB: insert incident (OPEN), publish incident_opened
+        GR->>DB: recall top-3 similar postmortems (advisory, best-effort)
         GR->>MCP: diagnosis investigates (<=12 tool calls)
         GR->>DB: insert primary hypothesis, mark DIAGNOSING
         opt confidence < 0.6
@@ -119,7 +127,7 @@ sequenceDiagram
             GR->>DB: incident AWAITING_APPROVAL, publish remediation_queued
             OP->>DB: approve -> execute -> incident RESOLVED
         end
-        GR->>DB: generate + embed postmortem (feeds future diagnoses)
+        Note over DB: on execution, either path: generate + embed postmortem<br/>(remediation_service owns this, feeding future recall)
     end
 ```
 
@@ -158,6 +166,7 @@ erDiagram
         string action_type
         string risk
         string status
+        text rationale "stated reason, advisory"
     }
     postmortem {
         string id PK
@@ -227,7 +236,7 @@ a window before posting it to the graph).
 execute an action is unsafe and non-deterministic.
 **Decision:** `domain/policy.py` maps `(fault_type, confidence)` → `(action, risk)` deterministically
 and is authoritative. The remediation agent receives the policy table and returns only a *rationale*
-(logged, never acted on). Auto-execution requires `risk == LOW and confidence >= 0.85`; a
+(persisted on the remediation row, never acted on). Auto-execution requires `risk == LOW and confidence >= 0.85`; a
 `confidence < 0.5` LOW action is bumped to MEDIUM so a shaky diagnosis can never auto-execute.
 **Consequences:** Actions are auditable and reproducible independent of model behavior. New fault
 types require a policy entry, not just a prompt change.
