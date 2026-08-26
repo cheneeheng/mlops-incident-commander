@@ -325,3 +325,57 @@ being the repository's first release.
 
 **Outcome:** `main` published; feature branch force-pushed with `--force-with-lease`; tree verified
 identical to the pre-rebase state via an empty `git diff` against the backup ref.
+
+### Entry 12
+
+**Type:** Decision
+**Mode:** Autonomous
+**Timestamp:** 2026-08-26T00:00:00+02:00
+**Task:** Close the ground-truth leak from postmortem memory into the diagnosis agent.
+
+**Context:** `_build_context` puts the injection's `ground_truth_fault` into the postmortem, and
+`POSTMORTEM_SYSTEM` requires a `## Ground truth vs diagnosis` section, so the answer key is written
+into `body_md`. `_retrieve_memory` then feeds the top-3 similar postmortems to the diagnosis agent
+for later incidents — so diagnosis could read a past incident's label instead of inferring it. Two
+fixes were available: (a) drop ground truth from the postmortem entirely, or (b) keep it in the
+stored body and strip it at retrieval.
+
+**Decision:** (b). The ground-truth section is the record of whether the agents were right, which is
+the point of a demo postmortem and is shown to humans; deleting it would remove real value to fix a
+leak that only exists on the retrieval path. `strip_ground_truth()` cuts from the section heading to
+the end of the document (it is the last of five sections) and is applied in `_retrieve_memory`
+before truncation.
+
+**Impact / Risk:** Best-effort, not airtight: a model that renames the heading defeats the regex.
+Stripping the last section is not sufficient on its own — the model is *given* the ground truth and
+could restate it under Root cause or Evidence — so `POSTMORTEM_SYSTEM` was also amended to forbid
+ground truth in the other four sections. Both halves are prompt-enforced and must stay in sync. The
+stored `embedding` is still computed over the full body including ground truth, which affects only
+similarity ranking, not what the agent reads.
+
+**Outcome:** Applied. Verified with a throwaway snippet that the section is removed and the
+preceding sections survive.
+
+### Entry 13
+
+**Type:** Decision
+**Mode:** Autonomous
+**Timestamp:** 2026-08-26T00:00:00+02:00
+**Task:** Determine which injection a postmortem is written against.
+
+**Context:** `generate_postmortem` used `get_latest_injection` — the newest injection row globally,
+with no link to the incident. `incident` has no `injection_id` FK, so the association can only be
+recovered by time. A postmortem written after a later injection started (the operator-approval path
+is asynchronous) reported the wrong fault as that incident's ground truth, and an organically
+detected incident inherited whatever injection was last run.
+
+**Decision:** Replaced it with `get_injection_at(db, incident.opened_at)` — the injection whose
+`[started_at, ended_at)` span contains the incident's open time, `None` if none does. Chose the
+time-overlap query over adding an `injection_id` FK: the FK is stronger but needs a migration and
+the monitor, which opens incidents, has no knowledge of injections by design.
+
+**Impact / Risk:** Incidents opened with no injection running now correctly get `None`, and the
+postmortem prompt already handles the no-ground-truth case. `get_latest_injection` had no other
+callers and was removed. Overlapping injections resolve to the most recently started one.
+
+**Outcome:** Applied. SQL compiled and inspected; not executed against a database.

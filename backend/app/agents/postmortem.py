@@ -3,6 +3,7 @@ store it for future memory retrieval. Called by the remediation executor after a
 Failures here are non-fatal to the remediation that triggered it."""
 
 import json
+import re
 import time
 from typing import Any
 
@@ -17,7 +18,7 @@ from backend.app.db.models import Hypothesis, Incident, Injection, Postmortem, R
 from backend.app.db.queries import (
     get_hypotheses_for_incident,
     get_incident,
-    get_latest_injection,
+    get_injection_at,
     get_remediations_for_incident,
     insert_postmortem,
 )
@@ -27,6 +28,20 @@ from backend.app.observability import log
 from backend.app.services.event_service import broker
 
 _POSTMORTEM_MAX_TOKENS = 1500
+
+
+_GROUND_TRUTH_HEADING = re.compile(r"^#+[ \t]*ground truth.*$", re.IGNORECASE | re.MULTILINE)
+
+
+def strip_ground_truth(body_md: str) -> str:
+    """Drop the ground-truth section so a postmortem can be shown to a diagnosing agent.
+
+    POSTMORTEM_SYSTEM fixes it as the last of five sections and forbids ground truth in the other
+    four, so cutting from its heading to the end removes the answer key and nothing else. Both
+    halves of that are prompt-enforced, hence best-effort: keep the two rules in sync.
+    """
+    match = _GROUND_TRUTH_HEADING.search(body_md)
+    return body_md[: match.start()].rstrip() if match else body_md
 
 
 def _build_context(
@@ -96,7 +111,9 @@ async def generate_postmortem(incident_id: str) -> None:
             return
         hypotheses = await get_hypotheses_for_incident(db, incident_id)
         remediations = await get_remediations_for_incident(db, incident_id)
-        injection = await get_latest_injection(db)
+        # The injection that was running when this incident opened, not merely the newest one:
+        # a later injection is not this incident's cause, and an organic incident has none.
+        injection = await get_injection_at(db, incident.opened_at)
 
     context = _build_context(incident, hypotheses, remediations, injection)
     try:

@@ -3,7 +3,7 @@ service owns the transaction boundary (one commit per request)."""
 
 from datetime import datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.db.models import (
@@ -62,8 +62,15 @@ async def get_active_injections(db: AsyncSession) -> list[Injection]:
     return list(rows)
 
 
-async def get_latest_injection(db: AsyncSession) -> Injection | None:
-    return await db.scalar(select(Injection).order_by(Injection.started_at.desc()).limit(1))
+async def get_injection_at(db: AsyncSession, at: datetime) -> Injection | None:
+    """The injection that was running at `at` (started by then, not yet ended). None if none was."""
+    return await db.scalar(
+        select(Injection)
+        .where(Injection.started_at <= at)
+        .where(or_(Injection.ended_at.is_(None), Injection.ended_at >= at))
+        .order_by(Injection.started_at.desc())
+        .limit(1)
+    )
 
 
 async def insert_injection(db: AsyncSession, injection: Injection) -> Injection:
