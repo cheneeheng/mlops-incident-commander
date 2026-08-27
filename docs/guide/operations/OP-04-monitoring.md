@@ -1,5 +1,7 @@
 # OP-04 — Monitoring and health
 
+[← Guide index](../index.md)
+
 ## Health endpoints
 
 | Check | Command | Healthy response |
@@ -27,6 +29,9 @@ Key events, and what their absence means:
 | `weights_reloaded` | serving | Poller saw a new active version | Deploy swaps are not taking effect |
 | `metric_window_written` | control | A window was aggregated and committed | No traffic, or the aggregator is failing |
 | `incident_opened` | control | The monitor chose to open an incident | Normal when healthy |
+| `hypothesis_written` | control | A diagnosis was validated and stored | Diagnosis is failing — check the error table below |
+| `adjudication_written` | control | The two low-confidence diagnoses were reconciled | Only emitted when a second opinion ran |
+| `postmortem_written` | control | A postmortem was generated for a resolved incident | Postmortem generation failed; the remediation still stands |
 
 Error events worth alerting on:
 
@@ -36,7 +41,15 @@ Error events worth alerting on:
 | `traffic_error` | A prediction POST failed. Isolated entries are transient; sustained ones mean serving is down or overloaded |
 | `poller_error` | The 5 s active-state poller failed. Deploy swaps and latency injections will not take effect while this repeats |
 | `monitor_failed` | The monitor's model call failed or returned unparseable output. **No incident can be opened while this repeats** — usually a bad or missing API key |
+| `diagnosis_failed` | The diagnosis model call failed. The node **fails closed**: the incident gets an `unknown` hypothesis at confidence 0.1, not a stall. Repeated entries mean every incident is now landing on **Approvals** as a high-risk `pipeline_fix` |
+| `adjudicator_failed` | Reconciling a second opinion failed; the higher-confidence of the two diagnoses is taken instead. The incident still advances |
+| `remediation_llm_failed` | The rationale call failed; the rationale is recorded as `policy fallback (LLM unavailable)`. The action and risk are unaffected — they come from the policy table, not the model |
+| `postmortem_llm_failed` | The postmortem model call failed; a fallback write-up is stored instead of a generated one |
+| `postmortem_embed_failed` | The postmortem was stored without an embedding, so it will never be retrieved as memory for future diagnoses. Silent quality loss — worth alerting on |
+| `memory_retrieval_failed` | Past-postmortem retrieval failed. Best-effort by design; diagnosis proceeds without memory |
 | `postmortem_generation_failed` | A remediation executed but its postmortem was not written. Non-fatal by design |
+| `monitor_window_missing` | The monitor was handed a window id that no longer exists. One entry is harmless; repeats mean the aggregator and the graph disagree about committed state |
+| `eval_run_error` | A suite run aborted mid-way. It is still finalized, so its scorecard is partial — discard it and rerun |
 | `no_active_deploy_at_startup` | Serving started with no active deploy; it will serve nothing useful until one is activated |
 
 ## What healthy looks like
@@ -73,3 +86,7 @@ curl -N http://localhost:8000/api/events
 Event types: `metrics_window`, `incident_opened`, `hypothesis_ready`, `remediation_queued`,
 `remediation_executed`, `remediation_rejected`, `postmortem_ready`. If `metrics_window` events stop
 arriving, the aggregator has stalled — see [OP-05 — Incident runbook](OP-05-runbook.md).
+
+---
+
+[← OP-03 Routine operations](OP-03-routine-operations.md) · [Guide index](../index.md) · [OP-05 Incident runbook →](OP-05-runbook.md)

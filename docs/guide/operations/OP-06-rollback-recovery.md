@@ -1,5 +1,7 @@
 # OP-06 — Rollback and recovery
 
+[← Guide index](../index.md)
+
 Procedures for getting back to a known-good state. Read the blast radius on each before running it.
 
 ## Roll the model back to the known-good version
@@ -117,6 +119,13 @@ and a `rejected` remediation stays rejected. There is no undo endpoint.
 - **A rollback executed that you did not want** — activate the version you meant to run, using the
   first procedure on this page.
 - **A remediation is stuck `pending` and no longer relevant** — reject it from the **Approvals**
-  page. Rejection is idempotent and safe.
+  page. Rejecting the same remediation twice is idempotent and safe. It clears the approval queue
+  but leaves the incident in `awaiting_approval` forever: nothing re-diagnoses it, and the rejected
+  remediation can never be approved. There is no supported way to resolve such an incident through
+  the API.
 - **An incident is resolved but the underlying fault is still active** — remediating does not stop an
   injection. Stop the injection separately, using the second procedure on this page.
+
+---
+
+[← OP-05 Incident runbook](OP-05-runbook.md) · [Guide index](../index.md)

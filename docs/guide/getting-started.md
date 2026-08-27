@@ -1,4 +1,6 @@
-# GT — What the system does, and a tour of the dashboard
+# Getting started: what the system does, and a tour of the dashboard
+
+[← Guide index](index.md)
 
 **Audience:** anyone using the dashboard. No shell access or knowledge of the internals is assumed.
 

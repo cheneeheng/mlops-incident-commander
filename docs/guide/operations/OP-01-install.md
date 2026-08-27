@@ -1,5 +1,7 @@
 # OP-01 — Install and first run
 
+[← Guide index](../index.md)
+
 **Audience:** operators. Assumes a shell, Docker, and the repository checked out.
 
 ## System overview
@@ -148,3 +150,7 @@ invalid `ANTHROPIC_API_KEY` (metrics flow, but no incident is ever opened and th
 `monitor_failed`).
 
 **Next:** [OP-02 — Configuration](OP-02-configuration.md).
+
+---
+
+[Guide index](../index.md) · [OP-02 Configuration →](OP-02-configuration.md)

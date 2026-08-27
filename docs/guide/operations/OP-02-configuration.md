@@ -1,5 +1,7 @@
 # OP-02 — Configuration reference
 
+[← Guide index](../index.md)
+
 Configuration comes from the environment, loaded from `.env` at process start. Unknown keys in
 `.env` are ignored. **Never commit `.env`.**
 
@@ -63,3 +65,7 @@ Change these in source only, and understand the consequence first.
   remediations.
 - Structured JSON logs carry a `correlation_id` per request, echoed as the `X-Correlation-ID`
   response header. Secrets, PII, and full LLM content are deliberately kept out of logs.
+
+---
+
+[← OP-01 Install and first run](OP-01-install.md) · [Guide index](../index.md) · [OP-03 Routine operations →](OP-03-routine-operations.md)
