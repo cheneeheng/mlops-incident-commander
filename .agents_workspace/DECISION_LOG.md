@@ -505,3 +505,31 @@ they record what was decided at the time; this entry is the forwarding address.
 
 **Outcome:** Applied. `index.md` now states the ordering rule, so the next page inserts at its
 component's position rather than at the end.
+
+### Entry 18
+
+**Type:** Decision
+**Mode:** Autonomous
+**Timestamp:** 2026-08-27T00:00:00+08:00
+**Task:** Revise `docs/guide/` (user + operator guide) against the documentation standard.
+
+**Context:** The guide already existed and was accurate; the ask was a revision pass, not a rewrite.
+Two root-level pages carried subfolder-style prefixes (`GT-getting-started.md`,
+`TS-troubleshooting.md`), which the standard reserves for files *inside* a subfolder — root-level
+pages take plain kebab-case names with no prefix and no number. Renaming touches every inbound link;
+leaving them alone keeps the tree stable but wrong.
+
+**Decision:** Renamed both to `getting-started.md` and `troubleshooting.md` via `git mv`, and
+rewrote every inbound link and both H1s in the same pass. The prefix carries meaning only where it
+disambiguates two numbering chains (`HT-01` vs `OP-01`); on a root-level page with no chain it is
+noise that implies an ordering the page does not have. Rejected: keeping the prefixes for churn
+avoidance — the guide is new, nothing outside `docs/guide/` links into it (verified by grep), so the
+churn is contained to this directory and never gets cheaper than it is now.
+
+**Impact / Risk:** Low, and confined to `docs/guide/`. Verified: all 13 pages parse with one H1,
+every one of the internal relative links resolves, and the rename is recorded as a rename
+(`R096`/`R09x`) rather than a delete-plus-add, so history follows the files.
+
+**Outcome:** Applied. Also added the missing page furniture (breadcrumbs on all 13 pages, prev/next
+footers on the 10 subfolder pages), which the renames were a prerequisite for — the footers encode
+each subfolder's chain, and root-level pages correctly have none.

@@ -1,6 +1,10 @@
 # OP-03 — Routine operations
 
-Day-to-day procedures. Install is in [07](OP-01-install.md); failures are in [11](OP-05-runbook.md).
+[← Guide index](../index.md)
+
+Day-to-day procedures. Standing the system up for the first time is
+[OP-01 — Install and first run](OP-01-install.md); failures are
+[OP-05 — Incident runbook](OP-05-runbook.md).
 
 ## Start the system
 
@@ -102,7 +106,8 @@ A 404 with `{"detail":"model_version not found"}` means that version has not bee
 
 ## Run the eval suite from the shell
 
-The dashboard button is the normal path ([05](../how-to/HT-04-evals-and-costs.md)); this is the scriptable
+The dashboard button is the normal path
+([HT-04 — Run the eval suite](../how-to/HT-04-evals-and-costs.md)); this is the scriptable
 equivalent. The run happens in the background and returns immediately.
 
 ```bash
@@ -122,3 +127,7 @@ make lint                          # ruff check .
 make typecheck                     # mypy backend serving mcp_servers (strict)
 cd frontend && npm run typecheck   # tsc -b --noEmit
 ```
+
+---
+
+[← OP-02 Configuration](OP-02-configuration.md) · [Guide index](../index.md) · [OP-04 Monitoring and health →](OP-04-monitoring.md)

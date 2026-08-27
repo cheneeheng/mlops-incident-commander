@@ -1,11 +1,13 @@
 # HT-01 — Run a fault drill
 
+[← Guide index](../index.md)
+
 Inject a labeled fault and watch the system detect, diagnose, and remediate it. This is the fastest
 way to see the whole product work.
 
 **When:** you want to demonstrate or exercise the loop end to end.
 **Prerequisites:** the dashboard is open and the Dashboard page is drawing charts (if it is empty,
-see [TS — Troubleshooting](../TS-troubleshooting.md)).
+see [TS — Troubleshooting](../troubleshooting.md)).
 **Time / impact:** 2–10 minutes. The injection degrades the live model's behaviour on purpose; a
 `bad_deploy` injection swaps the served model to the deliberately broken `v1.1-bad` checkpoint until
 you stop it.
@@ -34,7 +36,8 @@ Four faults can be injected. Each has a different signature on the Dashboard cha
 5. Watch the event feed for `incident_opened`. Detection is a judgement call made by the monitor
    agent, not a fixed threshold, so a mild fault may take several windows — or may legitimately not
    open an incident at all.
-6. Open **Incidents** and click the newest row. The **Incident detail** page fills in with the
+6. Open **Incidents** and click the **#** number on the newest row — the number is the link, not
+   the row. The **Incident detail** page fills in with the
    hypothesis once diagnosis completes (event `hypothesis_ready`), showing the diagnosed fault type,
    a confidence percentage, and the evidence the agent cited from its tools.
 7. Check **Approvals**. If the remediation was low risk and the diagnosis was confident, it already
@@ -48,6 +51,7 @@ Four faults can be injected. Each has a different signature on the Dashboard cha
 the **Incidents** page reads `resolved`, and a postmortem exists for it.
 
 **If it fails:**
+
 - *No incident after several windows* — the fault may be too mild to be worth an incident. Stop the
   injection and try a stronger fault such as `bad_deploy`, which produces an unmistakable signal.
 - *Charts are not moving at all* — the traffic generator or aggregator is not running; hand over to
@@ -59,3 +63,7 @@ The **Inject fault** button sends an injection with default parameters. The magn
 scored scenario suite — for example `brightness` and `noise` for drift, `added_latency_ms` for
 latency, `class` and `fraction` for label skew — are exercised by the eval suite instead; see
 [HT-04 — Run the eval suite](HT-04-evals-and-costs.md).
+
+---
+
+[Guide index](../index.md) · [HT-02 Approve a remediation →](HT-02-approve-a-remediation.md)

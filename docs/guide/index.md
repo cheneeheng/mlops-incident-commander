@@ -6,16 +6,17 @@ steady stream of CIFAR-10 images to the model; a metrics aggregator rolls those 
 wrong, diagnoses the root cause, and proposes a remediation that either auto-executes or waits for
 your approval.
 
-Start with **GT — Getting started**, then use the **HT** how-to pages for individual tasks. The
-`HT-` pages are the **user guide** (dashboard only, no shell access needed); the `OP-` pages are the
+Start with **Getting started**, then use the **HT** how-to pages for individual tasks. The `HT-`
+pages are the **user guide** (dashboard only, no shell access needed); the `OP-` pages are the
 **operator guide** (installing, running, and recovering the system). The two are kept separate on
-purpose. **TS — Troubleshooting** covers the dashboard; operators in a live incident want
-[OP-05 — Incident runbook](operations/OP-05-runbook.md) instead.
+purpose. **Troubleshooting** covers what you can see and fix from the browser; operators in a live
+incident want [OP-05 — Incident runbook](operations/OP-05-runbook.md) instead.
 
 ## Start here
 
-- [GT — Getting started: what the system does and a dashboard tour](GT-getting-started.md)
-- [TS — Troubleshooting the dashboard](TS-troubleshooting.md)
+- [Getting started](getting-started.md) — what the system does, and a tour of the dashboard.
+- [Troubleshooting the dashboard](troubleshooting.md) — symptom-to-fix table for what you see in the
+  browser.
 
 ## How-to (user guide)
 

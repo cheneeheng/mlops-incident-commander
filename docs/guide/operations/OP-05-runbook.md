@@ -1,5 +1,7 @@
 # OP-05 — Incident runbook
 
+[← Guide index](../index.md)
+
 One entry per failure mode: detection → diagnosis → remediation → verification. Read
 [OP-04 — Monitoring](OP-04-monitoring.md) first for the health checks referenced throughout.
 
@@ -22,6 +24,7 @@ A single `aggregator_empty_window` at DEBUG is normal right after startup — th
 in the last 30 seconds yet.
 
 **Remediation:**
+
 - Serving down → restart it (`make serving`).
 - Database down → `make db`, wait for healthy, then restart both application processes.
 - Traffic generator never started → it downloads CIFAR-10 into `data/` on first run; check for
@@ -39,12 +42,14 @@ advance.
 `incident_opened` follows over several windows.
 
 **Diagnosis:**
+
 1. Check for `monitor_failed` in the control plane log. That is the model call failing — almost
    always a missing, invalid, or rate-limited `ANTHROPIC_API_KEY`.
 2. If no `monitor_failed` appears, the monitor is running and choosing not to open an incident. Look
    at the window values: if PSI and latency really are near baseline, the injection is not biting.
 
 **Remediation:**
+
 - Bad key → fix `ANTHROPIC_API_KEY` in `.env` and **restart the control plane**. Settings are cached
   per process, so an edit alone changes nothing.
 - Rate limiting → wait, or move `MODEL_CHEAP` to a model with headroom.
@@ -60,11 +65,20 @@ advance.
 **Detection:** an incident exists on the **Incidents** page but never gains a hypothesis or a
 remediation.
 
-**Diagnosis:** the diagnosis agent spawns four MCP stdio tool servers as subprocesses. Failures show
-as an incident that stops advancing. Check the control plane log for exceptions around the incident's
-timestamp, and confirm the Anthropic API is reachable.
+**Diagnosis:** the diagnosis agent spawns four MCP stdio tool servers as subprocesses. A *model*
+failure does not stall — it logs `diagnosis_failed` and fails closed to `unknown`. A genuine stall
+means the node never returned, so look for the absence of `hypothesis_written` for that incident
+rather than for an error line:
+
+```bash
+grep -E 'diagnosis_failed|hypothesis_written' <control-plane-log>
+```
+
+Neither event for the incident means the node is hung — most often the MCP subprocesses failed to
+spawn. Confirm the Anthropic API is reachable as well.
 
 **Remediation:**
+
 1. Confirm the MCP servers start standalone:
 
    ```bash
@@ -117,6 +131,7 @@ environment variables at start.
 **Detection:** pages error, the event feed is silent, browser console shows failed `/api` requests.
 
 **Diagnosis:**
+
 1. Is the control plane up? `curl http://localhost:8000/health`.
 2. Is the browser origin allowed? `CORS_ORIGINS` must contain the origin serving the dashboard.
 3. Is the Vite proxy pointing at the right port? The dev server proxies `/api` to
@@ -137,7 +152,8 @@ plane; or correct the proxy target in `frontend/vite.config.ts` and restart the 
 on serving, traffic, the aggregator, and the agent graph all running. If any is down, every case
 waits out its timeouts: 600 s for detection plus 300 s for a hypothesis, per case, across 13 cases.
 
-**Remediation:** confirm the full stack is healthy ([10](OP-04-monitoring.md)) and let the run
+**Remediation:** confirm the full stack is healthy
+([OP-04 — Monitoring](OP-04-monitoring.md)) and let the run
 finish; then start a new run. Do not run two suites at once — the runner clears active injections
 and resets the active deploy when it starts, so concurrent runs corrupt each other's cases.
 
@@ -154,3 +170,7 @@ There is no on-call rotation for this system. When the runbook runs out:
 2. Note the incident number and window timestamps involved.
 3. Record what you changed while diagnosing, so the next person is not debugging your fix.
 4. Raise it with the repository owner.
+
+---
+
+[← OP-04 Monitoring and health](OP-04-monitoring.md) · [Guide index](../index.md) · [OP-06 Rollback and recovery →](OP-06-rollback-recovery.md)

@@ -1,4 +1,6 @@
-# TS — Troubleshooting (dashboard)
+# Troubleshooting the dashboard
+
+[← Guide index](index.md)
 
 Symptoms you can see and act on from the browser. Anything that needs a shell is in
 [OP-05 — Incident runbook](operations/OP-05-runbook.md); hand those items to your operator.
@@ -13,6 +15,7 @@ Symptoms you can see and act on from the browser. Anything that needs a shell is
 | An incident is stuck in `open` or `diagnosing` | Diagnosis failed or is still running | Give it a few minutes. If it never advances, escalate — the agent may be failing to reach the model API |
 | A diagnosis came back as `unknown` with very low confidence | The agent failed to reach a conclusion and deliberately failed closed | Expected behaviour, not a bug. It produces a high-risk `pipeline_fix` that always requires your approval |
 | **Approvals** is empty although an incident was opened | The remediation was low risk and confident, so it auto-executed | Check **Incidents**; the incident should be `resolved` |
+| An incident you rejected the remediation for stays in `awaiting_approval` | Rejection is final and nothing re-diagnoses the incident | Expected, not a bug. The incident stays open forever; tell your operator so it is not mistaken for a live problem — see [HT-02](how-to/HT-02-approve-a-remediation.md) |
 | An approve or reject click errors | The remediation was already executed or rejected elsewhere | Reload the page. Terminal remediations cannot be changed |
 | A resolved incident has no postmortem | Postmortem generation failed; it is deliberately non-fatal | The remediation still executed. Escalate so the failure can be found in the logs |
 | An eval run shows `—` for every score | The run has not finished | Wait. A full suite is 13 cases with per-case timeouts of up to 15 minutes |

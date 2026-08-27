@@ -1,5 +1,7 @@
 # HT-04 — Run the eval suite and read costs
 
+[← Guide index](../index.md)
+
 ## Run the eval suite
 
 **When:** you want a scored, repeatable measure of how well the agents detect and diagnose faults —
@@ -14,7 +16,7 @@ Do not start a run while you need the system quiet.
 2. Click **Run eval suite**. The run is accepted immediately and executes in the background; the
    button re-enables and a new row appears in the table.
 3. Wait. Refresh expectations accordingly — the run row shows `—` for its scores until it finishes.
-4. Click the run's row to open **Run detail**, a per-case scorecard.
+4. Click the run's row. A **Run detail** card opens below the table with the per-case scorecard.
 
 **Verify:** the run row shows non-empty **Recall**, **Diagnosis acc**, **Mean MTTD**, and
 **Mean cost** values.
@@ -54,3 +56,7 @@ means either many incidents were opened or an eval suite was run.
 
 Per-incident cost for a single incident is also visible on its **Incident detail** page under agent
 runs.
+
+---
+
+[← HT-03 Review incidents](HT-03-review-incidents.md) · [Guide index](../index.md)

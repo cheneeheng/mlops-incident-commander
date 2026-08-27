@@ -1,5 +1,7 @@
 # HT-02 — Approve or reject a remediation
 
+[← Guide index](../index.md)
+
 **When:** an incident reaches `awaiting_approval`, or a `remediation_queued` event appears in the
 feed.
 **Prerequisites:** dashboard access. No shell access needed.
@@ -26,6 +28,12 @@ a shaky diagnosis can never auto-execute. Everything that does not clear that ba
 
 ## Steps
 
+> **Warning:** rejecting is final and leaves the incident open. A rejected remediation can never be
+> approved afterwards, no replacement is proposed, and the incident stays in `awaiting_approval`
+> indefinitely — the system does not re-diagnose it. Reject only when you are sure the action is
+> wrong; if you want the fault fixed a different way, do it yourself and tell your operator the
+> incident is stranded.
+
 1. Open **Approvals** in the sidebar. Each card shows the action type, a risk badge (`low risk`,
    `medium risk`, `high risk`), a link to the incident, and the diagnosis line —
    for example `Diagnosis: feature_drift (72% confidence)`.
@@ -40,10 +48,11 @@ a shaky diagnosis can never auto-execute. Everything that does not clear that ba
 
 **Verify:** the card disappears from **Approvals**. On approval, the incident's **Status** on the
 **Incidents** page becomes `resolved` with a **Closed** timestamp, and a postmortem appears under
-**Postmortems** shortly after. On rejection, the remediation is marked rejected and the incident is
-not resolved.
+**Postmortems** shortly after. On rejection, the remediation is marked `rejected`, the card is
+gone, and the incident stays in `awaiting_approval`.
 
 **If it fails:**
+
 - *The card reappears or an error is shown* — the remediation may already have been acted on in
   another browser tab. Reload the page; an already-executed or already-rejected remediation cannot
   be approved again.
@@ -58,3 +67,7 @@ not resolved.
   immediately. They are simulated: no retraining job or pipeline change is launched.
 
 In all three cases the incident is resolved and a postmortem is generated.
+
+---
+
+[← HT-01 Run a fault drill](HT-01-run-a-fault-drill.md) · [Guide index](../index.md) · [HT-03 Review incidents →](HT-03-review-incidents.md)

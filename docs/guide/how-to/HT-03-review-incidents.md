@@ -1,5 +1,7 @@
 # HT-03 — Review incidents and postmortems
 
+[← Guide index](../index.md)
+
 **When:** you are investigating what the system saw, decided, and did.
 **Prerequisites:** dashboard access.
 
@@ -7,7 +9,7 @@
 
 1. Open **Incidents**. The table lists every incident with **#**, **Status**, **Severity**,
    **Opened**, and **Closed**.
-2. Click a row to open **Incident detail**.
+2. Click the incident's **#** number to open **Incident detail**. Only the number is a link.
 
 **Verify:** the detail page header reads `Incident #<number>` with its status and severity.
 
@@ -32,8 +34,10 @@ Read them in that order: trigger → hypothesis → remediation. If a `second_op
 
 ## Read a postmortem
 
-1. Open **Postmortems**. Each resolved incident has one entry.
-2. Select the postmortem for your incident to read the generated write-up.
+1. Open **Postmortems**. Every postmortem is listed in full, newest first — there is nothing to
+   click open.
+2. Find the entry whose `incident` link matches yours. Each entry is headed by that link and the
+   time it was written, followed by the whole write-up.
 
 Postmortems are not only for humans: each one is embedded and stored, and the diagnosis agent
 retrieves the three most similar past postmortems as advisory context when investigating future
@@ -48,3 +52,7 @@ operator ([OP-05 — Incident runbook](../operations/OP-05-runbook.md) covers fi
 The **Inject** page shows each injection's ground-truth fault, because you are running the drill.
 The diagnosis agent never sees it — it cannot read whether a deploy is flagged faulty and must infer
 the fault from metrics alone. That is what makes a matching diagnosis meaningful.
+
+---
+
+[← HT-02 Approve a remediation](HT-02-approve-a-remediation.md) · [Guide index](../index.md) · [HT-04 Evals and costs →](HT-04-evals-and-costs.md)
