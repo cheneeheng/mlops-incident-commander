@@ -379,3 +379,129 @@ postmortem prompt already handles the no-ground-truth case. `get_latest_injectio
 callers and was removed. Overlapping injections resolve to the most recently started one.
 
 **Outcome:** Applied. SQL compiled and inspected; not executed against a database.
+
+### Entry 14
+
+**Type:** Decision
+**Mode:** Autonomous
+**Timestamp:** 2026-08-26T22:10:00+08:00
+**Task:** Document the mcp_servers/ package under docs/internals
+
+**Context:** While explaining mcp_servers/ I found two things the explanation alone does not fix:
+McpToolbox.call_tool discards the MCP isError flag, so DB failures reach the diagnosis model as
+ordinary tool evidence; and pyproject.toml pins mcp>=1.1 with no upper bound while the SDK has
+shipped a 2.x that renames FastMCP and replaces ClientSession. The user asked for documentation of
+the session, not for either fix.
+
+**Decision:** Wrote docs/internals/IN-03-mcp-servers.md only, and left backend/app/agents/mcp_client.py
+and pyproject.toml untouched. Both findings are recorded in the doc (the isError swallow as the
+primary wrong-conclusion, the unbounded pin under Protocol and SDK status, with the suggested
+mcp>=1.28,<2) so the next person to open either file sees them. Changing a dependency constraint or
+an error path is a code change the request did not authorize.
+
+**Impact / Risk:** Both defects remain live. A fresh install that ignores uv.lock still resolves to
+mcp 2.1.1 and fails on import; a diagnosis run during a DB outage still produces an indistinguishable
+low-confidence unknown. docs/internals/ is git-ignored (.gitignore:33, "Internal working docs (not
+published)"), so the record is local to this checkout and will not reach anyone who clones the repo.
+
+**Outcome:** Doc written and indexed. Tool discovery and the isError behaviour were verified by
+running; no tool call reached a database and the agent graph was not run.
+
+### Entry 15
+
+**Type:** Decision
+**Mode:** Autonomous
+**Timestamp:** 2026-08-26T00:00:00Z
+**Task:** Document the frontend/ explanation from this session under docs/internals.
+
+**Context:** Explaining frontend/src turned up three live defects the explanation alone does not
+fix: components/ApprovalCard.tsx:24 and pages/Postmortems.tsx:17 navigate with a raw `<a href>`
+instead of react-router `<Link>`, so clicking either reboots the SPA and drops the query cache and
+the event feed; and lib/events.tsx's INVALIDATIONS map covers no key for ["costs"] or ["evalRuns"],
+so the Costs and Evals pages never refresh from server events. The user asked for the session
+documented, not for any of it fixed.
+
+**Decision:** Wrote docs/internals/IN-04-frontend-module.md and indexed it; touched no file under
+frontend/. All three defects are recorded in the doc (the `<a href>` reboot and the frozen eval
+scorecard as the two wrong-conclusions, the ["costs"] gap alongside), with pages/Incidents.tsx:31
+named as the correct `<Link>` reference, so whoever opens those files next sees the fix and its
+precedent. Editing components is a code change the request did not authorize.
+
+**Impact / Risk:** All three remain live. An operator approving from the Approvals page still loses
+the feed on every incident link; a running eval scorecard still looks stalled until the page is
+revisited. docs/internals/ is git-ignored (.gitignore:33), so this record stays local to the
+checkout and does not reach anyone cloning the repo.
+
+**Outcome:** Doc written (304 lines) and indexed. The event-name contract, the uncalled api methods,
+the two `<a href>` sites and the one-way import direction were verified by grep; nothing was
+verified by running, since frontend/node_modules is absent — no install, no typecheck, no browser.
+
+### Entry 16
+
+**Type:** Decision
+**Mode:** Autonomous
+**Timestamp:** 2026-08-26
+**Task:** Document the session's `backend/app/` explanation under `docs/internals/`.
+
+**Context:** Two forks the request left open.
+1. `docs/internals/` pages are "one subsystem each" (index.md) and the existing three cover 186-257
+   lines apiece. `backend/app/` is 3280 lines — one page matching that depth would be unreadable.
+2. `domain/policy.py` is defined in the layer stack but only exercised by the agent graph, so it
+   could sit on either page.
+
+**Decision:**
+1. Split at the seam that already exists in the architecture — request/response versus the
+   autonomous loop. IN-04 covers `main`/`config`/`observability`/`schemas`/`domain`/`routers`/
+   `services`/`db` (1808 lines); IN-05 covers `tasks`/`agents`/`eval` (1472). Each page states its
+   own line total and links the other.
+2. `domain/` stays whole in IN-04 (it is the layer with no dependencies); IN-05 walks the policy
+   table in use and links back. Splitting a 136-line package across two pages would be worse.
+
+Both pages follow the established IN-NN shape: assumed-background line, file table with `wc -l`
+counts, foundations before use, ASCII diagrams, one walked case, wrongly-conclude, tempting-but-wrong
+alternatives, verification status, rule, self-test.
+
+**Impact / Risk:** Low — additive docs plus two index rows. The risk is drift: IN-05's walked case
+cites `graph.py` line numbers and the `0.6` / `0.85` / `12` constants, which will rot if those move.
+
+**Outcome:** `docs/internals/IN-04-backend-request-path.md`, `IN-05-backend-agent-pipeline.md`,
+and two rows in `docs/internals/index.md`. Both pages record that nothing was run beyond the pure
+functions in `domain/policy.py` and `tasks/aggregator.py`.
+
+### Entry 17
+
+**Type:** Decision
+**Mode:** Autonomous
+**Timestamp:** 2026-08-26
+**Task:** Renumber `docs/internals/` so page numbers follow the repo's component order.
+
+**Context:** Two IN-04s and two IN-05s existed. `IN-04-frontend-module.md` and `IN-05-examples.md`
+were written by a concurrent session (22:49, 22:50) minutes before Entry 16's pages took the same
+numbers (22:51, 22:52); neither writer saw the other's files. The user asked for backend first,
+then frontend, then examples — which leaves `serving/`, `mcp_servers/` and `scripts/` unplaced.
+
+**Decision:** Order pages by the component order README.md already publishes in its *Architecture*
+section — `backend/`, `serving/`, `mcp_servers/`, `frontend/`, `scripts/` — with `examples/` last per
+the user's instruction. Final map:
+
+| was | now |
+|---|---|
+| IN-04-backend-request-path | **IN-01** |
+| IN-05-backend-agent-pipeline | **IN-02** |
+| IN-02-serving-module | **IN-03** |
+| IN-03-mcp-servers | **IN-04** |
+| IN-04-frontend-module | **IN-05** |
+| IN-01-scripts-directory | **IN-06** |
+| IN-05-examples | **IN-07** |
+
+Rejected: appending new pages at the tail (`IN-06`, `IN-07`) to avoid churn. It preserves numbers at
+the cost of the ordering the user asked for, and the numbers are not stable references — the whole
+directory is gitignored (`.gitignore:33`), so nothing outside it can link to a page anyway.
+
+**Impact / Risk:** Low. All seven files renamed, H1s and cross-links rewritten, index.md table
+reordered. Verified: 11 relative link targets resolve, 0 label/target mismatches. Entry 16 and the
+earlier entries naming `IN-03-mcp-servers.md` / `IN-04-frontend-module.md` are left as written —
+they record what was decided at the time; this entry is the forwarding address.
+
+**Outcome:** Applied. `index.md` now states the ordering rule, so the next page inserts at its
+component's position rather than at the end.
