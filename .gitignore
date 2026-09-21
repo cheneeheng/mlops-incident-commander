@@ -23,8 +23,7 @@ data/
 node_modules/
 frontend/dist/
 
-# Agent session ephemera (ARCHITECTURE.md and DECISION_LOG.md stay tracked)
-.agents_workspace/handoff/
+.agents_workspace/
 
 # OS
 .DS_Store
