@@ -68,6 +68,25 @@ gone, and the incident stays in `awaiting_approval`.
 
 In all three cases the incident is resolved and a postmortem is generated.
 
+## Known limitations
+
+- **These three actions are the complete set.** `RemediationActionType` (`backend/app/domain/enums.py`)
+  defines only `rollback`, `retrain_trigger`, and `pipeline_fix`, and the remediation prompt offers
+  the agent only those three. Several faults share one action: `label_skew`, `latency`, and `unknown`
+  all map to `pipeline_fix`. Adding an action means changing the enum, the policy table
+  (`backend/app/domain/policy.py`), the remediation prompt, and `execute_remediation`
+  (`backend/app/services/remediation_service.py`). The `action_type` column is a plain string, so no
+  migration is needed.
+- **The agent's own action and risk are discarded, and a disagreement is not recorded.** The agent
+  returns an `action_type`, a `risk`, and a `rationale`. The system validates all three, then keeps
+  only the rationale. The stored action and risk always come from the policy table. If the agent
+  proposed a different action, nothing logs the mismatch, so the rationale on the card can argue for
+  an action other than the one shown above it. Judge the action by the diagnosis and the table, not
+  by the rationale.
+- **An invalid agent action also costs you the rationale.** If the agent returns an action or risk
+  outside the allowed values, validation fails and the rationale is replaced with
+  `policy fallback (LLM unavailable)`. The action and risk are unaffected.
+
 ---
 
 [← HT-01 Run a fault drill](HT-01-run-a-fault-drill.md) · [Guide index](../index.md) · [HT-03 Review incidents →](HT-03-review-incidents.md)
